@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DOCS = ["README.md", "DESIGN.md", "docs/model-selection.md"]
 INVOCATION = re.compile(r"\bjoven ([a-z][a-z-]*)((?: [^\n#]*)?)")
 FLAG = re.compile(r"--[a-z][a-z0-9-]+")
+LINK = re.compile(r"\[[^\]]*\]\(([^)#][^)]*)\)")
 
 
 def cli_surface(executable: str) -> dict[str, set[str]]:
@@ -39,6 +40,27 @@ def cli_surface(executable: str) -> dict[str, set[str]]:
         out = subprocess.run([executable, cmd, "--help"], capture_output=True, text=True).stdout
         surface[cmd] = set(FLAG.findall(out))
     return surface
+
+
+def check_links() -> list[str]:
+    """Relative links must point at files that exist.
+
+    A dead link is the most common defect in a public README and the easiest to
+    ship, because the author knows what they meant and never clicks it.
+    """
+    problems: list[str] = []
+    for name in [*DOCS, "CHANGELOG.md"]:
+        path = ROOT / name
+        if not path.is_file():
+            continue
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines()):
+            for match in LINK.finditer(line):
+                target = match.group(1).split("#")[0].strip()
+                if not target or target.startswith(("http://", "https://", "mailto:")):
+                    continue
+                if not (path.parent / target).exists():
+                    problems.append(f"{name}:{i + 1}: dead link -> {target}")
+    return problems
 
 
 def check(executable: str) -> list[str]:
@@ -77,13 +99,14 @@ def main() -> int:
     parser.add_argument("--executable", default=sys.executable.replace("python", "joven"))
     args = parser.parse_args()
 
-    problems = check(args.executable)
+    problems = check(args.executable) + check_links()
     for problem in problems:
         print(f"  {problem}")
     if problems:
-        print(f"\n  FAIL: {len(problems)} documented command(s) do not exist.")
+        print(f"\n  FAIL: {len(problems)} problem(s) — the docs describe something "
+              f"that is not there.")
         return 1
-    print("  PASS: every documented `joven ...` invocation matches the real CLI.")
+    print("  PASS: documented commands all exist, and every relative link resolves.")
     return 0
 
 
