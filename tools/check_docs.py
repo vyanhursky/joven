@@ -31,7 +31,14 @@ LINK = re.compile(r"\[[^\]]*\]\(([^)#][^)]*)\)")
 
 def cli_surface(executable: str) -> dict[str, set[str]]:
     """Every command the CLI really has, and the flags each really accepts."""
-    top = subprocess.run([executable, "--help"], capture_output=True, text=True).stdout
+    try:
+        top = subprocess.run([executable, "--help"], capture_output=True, text=True).stdout
+    except FileNotFoundError:
+        raise SystemExit(
+            f"error: {executable!r} is not on PATH.\n"
+            f"       Install the package first (pip install -e .), or point at the\n"
+            f"       built script: --executable ./.venv/bin/joven"
+        ) from None
     commands = set(re.findall(r"^\s*│\s+([a-z][a-z-]*)\s", top, re.M))
     if not commands:  # help rendering differs across typer/rich versions
         commands = set(re.findall(r"^\s{2,}([a-z][a-z-]*)\s{2,}\S", top, re.M))

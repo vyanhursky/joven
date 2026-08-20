@@ -190,6 +190,13 @@ class _Handler(BaseHTTPRequestHandler):
         if not self.path.startswith("/api/annotation/"):
             self._send(404, b"not found", "text/plain")
             return
+        # Require the JSON content type. A cross-origin `fetch` cannot set it
+        # without a preflight this server never answers, and an HTML form cannot
+        # set it at all — so this is what stops a page open in another tab from
+        # POSTing edits into the sidecar while the review server is running.
+        if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
+            self._send(415, b'{"error":"expected application/json"}', "application/json")
+            return
         annotation_id = self.path.rsplit("/", 1)[-1]
         length = int(self.headers.get("Content-Length", "0"))
         try:

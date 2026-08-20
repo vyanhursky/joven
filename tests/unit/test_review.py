@@ -199,3 +199,73 @@ def test_context_pulls_preceding_prose(sample_epub: Path) -> None:
     context = build_context(sample_epub, sidecar)
     text = context[sidecar.annotations[0].id]
     assert "withdrew his hand" in text
+
+
+# ------------------------------------------------------------------ the server
+
+
+@pytest.fixture
+def server(state: ReviewState):
+    """The real handler on an ephemeral port, torn down after the test."""
+    from functools import partial
+    from http.server import ThreadingHTTPServer
+
+    from joven.review import _Handler
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), partial(_Handler, state=state))
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield httpd, state
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=5)
+
+
+def _post(httpd, annotation_id: str, body: bytes, content_type: str | None):
+    import http.client
+
+    conn = http.client.HTTPConnection(*httpd.server_address, timeout=5)
+    headers = {"Content-Type": content_type} if content_type else {}
+    conn.request("POST", f"/api/annotation/{annotation_id}", body=body, headers=headers)
+    response = conn.getresponse()
+    payload = response.read()
+    conn.close()
+    return response.status, payload
+
+
+def test_json_post_updates_the_annotation(server) -> None:
+    httpd, state = server
+    target = state.sidecar.annotations[0]
+    status, _ = _post(
+        httpd, target.id, json.dumps({"status": "approved"}).encode(), "application/json"
+    )
+    assert status == 200
+    assert Sidecar.load(state.path).annotations[0].status is Status.APPROVED
+
+
+def test_post_without_the_json_content_type_is_refused(server) -> None:
+    """A form POST is the one cross-origin request that needs no preflight.
+
+    Refusing it is what stops a page open in another tab from writing into the
+    sidecar while the review server is running on a known localhost port.
+    """
+    httpd, state = server
+    target = state.sidecar.annotations[0]
+    before = Sidecar.load(state.path).annotations[0].status
+
+    status, _ = _post(
+        httpd,
+        target.id,
+        json.dumps({"status": "rejected"}).encode(),
+        "text/plain;charset=UTF-8",
+    )
+    assert status == 415
+    assert Sidecar.load(state.path).annotations[0].status is before
+
+
+def test_unknown_path_is_404(server) -> None:
+    httpd, _ = server
+    status, _ = _post(httpd, "x", b"{}", "application/json")
+    assert status == 404
