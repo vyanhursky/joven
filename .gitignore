@@ -1,0 +1,53 @@
+# --- Book content: NEVER commit ------------------------------------------------
+#
+# This repository is a tool for annotating books you own. It must not become a
+# way to distribute one. Two categories matter, and the second is easy to miss:
+#
+#   1. The books themselves.
+#   2. Everything derived from them. `trace.jsonl` carries one record per
+#      segment with the source text verbatim — about 772,000 characters, which
+#      is the whole novel. `annotations.json` carries the full paragraph around
+#      each footnote. Together the untracked artifacts in this directory held
+#      ~3.3x the text of the book they came from.
+#
+# Git history is permanent: a single commit containing these cannot be undone by
+# deleting the file later. Keep this section broad and let `git add -f` be the
+# deliberate exception, rather than listing files and hoping the list stays
+# complete.
+*.epub
+*.kepub.epub
+*.mobi
+*.azw3
+*.pdf
+
+annotations*.json
+trace*.jsonl
+*-annotations.json
+*-detected.json
+review-demo.json
+sample-*.json
+
+# Rendered output, and the per-book working directories
+out/
+out-*/
+books/
+scratch/
+
+# --- Python -------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- OS / editor --------------------------------------------------------------
+.DS_Store
+._*
+.idea/
+.vscode/
+*.swp

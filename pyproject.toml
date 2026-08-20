@@ -1,0 +1,46 @@
+[project]
+name = "epub-translation-helper"
+version = "0.1.0"
+description = "Insert clickable translation footnotes for foreign-language passages in an EPUB"
+requires-python = ">=3.11"
+dependencies = [
+    "lxml>=5.2",
+    "typer>=0.12",
+    "lingua-language-detector>=2.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+# The paid backend is opt-in: the offline pipeline must keep working without it.
+claude = ["anthropic>=0.122"]
+
+[project.scripts]
+etx = "etx.cli:app"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "realbook: needs ETX_TEST_EPUB pointing at a real EPUB (opt-in)",
+    "epubcheck: needs the epubcheck binary on PATH",
+    "ollama: needs a running ollama server",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# typer's entire API is function calls in argument defaults
+"src/etx/cli.py" = ["B008"]
