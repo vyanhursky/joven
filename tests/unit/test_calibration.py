@@ -6,12 +6,10 @@ rather than eyeballed.
 
 from __future__ import annotations
 
-import sys
-
 import pytest
 
-sys.path.insert(0, "tools")
-from make_calibration import LENGTHS, TARGETS, calibration_text  # noqa: E402
+# `tools` is on the path via [tool.pytest.ini_options] pythonpath in pyproject.
+from make_calibration import LENGTHS, TARGETS, calibration_text
 
 
 @pytest.mark.parametrize("length", LENGTHS)

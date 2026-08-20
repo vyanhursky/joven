@@ -49,6 +49,8 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
+# resolved against rootdir, so the dev-tool tests work from any working directory
+pythonpath = ["tools"]
 markers = [
     "realbook: needs JOVEN_TEST_EPUB pointing at a real EPUB (opt-in)",
     "epubcheck: needs the epubcheck binary on PATH",

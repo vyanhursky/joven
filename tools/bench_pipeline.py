@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
-sys.path.insert(0, "tools")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import httpx  # noqa: E402
 from bench_models import CASES, ask  # noqa: E402
 
