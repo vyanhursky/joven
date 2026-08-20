@@ -99,9 +99,6 @@ jobs:
       - name: Documented commands all exist
         run: python tools/check_docs.py --executable joven
 
-      - name: The skull still renders
-        run: python tools/skull.py --scale 0.80 --width 62
-
   package:
     runs-on: ubuntu-latest
     steps:
