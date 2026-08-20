@@ -89,9 +89,10 @@ def is_embedded_loanword(
     if not spanish_text.strip():
         return False
 
-    # The policy is about a single *word* (§4.6). Anything longer is a Spanish
-    # utterance the reader needs, however much English surrounds it — and the
-    # surrounding-English test alone got these badly wrong on the full book:
+    # The policy is about a single *word* (DESIGN.md §8, embedded loanwords).
+    # Anything longer is a Spanish utterance the reader needs, however much
+    # English surrounds it — and the surrounding-English test alone got these
+    # badly wrong on the full book:
     #
     #   "Somos dolientes en la oscuridad."  trailing a whole English sentence
     #   "La tercera historia, said the gypsy, es ésta."   split by its own tag

@@ -1,7 +1,7 @@
 """Minimal OPF (package document) reading.
 
 Only what the pipeline actually needs: where the OPF lives, the spine order, and
-enough metadata for ``joven inspect``. The EPUB 2->3 upgrade in M3 will extend this.
+enough metadata for ``joven inspect`` and the EPUB 2->3 upgrade.
 """
 
 from __future__ import annotations
