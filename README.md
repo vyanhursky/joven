@@ -57,10 +57,9 @@ cost, nothing uploaded.
 
 ## Status
 
-**Working end to end on a real book.** M1–M6 complete: lossless round-trip,
-two-tier detection with a full decision trace, EPUB 2→3 upgrade, footnote rendering
-device-verified on a Kobo, KEPUB output, a review pass, and a finished book on the
-device.
+**Working end to end on a real book:** lossless round-trip, two-tier detection with
+a full decision trace, EPUB 2→3 upgrade, footnote rendering device-verified on a
+Kobo, KEPUB output, a review pass, and a finished book on the device.
 
 Last full run — Knopf's 1994 edition of *The Crossing*, 151,865 words:
 
@@ -73,7 +72,7 @@ Last full run — Knopf's 1994 edition of *The Crossing*, 151,865 words:
 | integrity checks | 11 of 11 passing |
 
 Two earlier runs against a damaged scan of the same novel paid for themselves by
-exposing bugs no synthetic fixture had caught — see [DESIGN.md](DESIGN.md) §8.
+exposing bugs no synthetic fixture had caught — see [DESIGN.md](DESIGN.md) §7.
 
 ## Install
 

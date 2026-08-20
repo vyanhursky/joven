@@ -5,23 +5,22 @@ v1 scope: **EPUB input, Spanish→English, Cormac McCarthy's *The Crossing*.**
 
 ## Status
 
-| Milestone | State |
+| Capability | State |
 |---|---|
-| M0 — Skeleton, CLI, `joven inspect` | ✅ done |
-| M1 — Lossless round-trip + `epubcheck` + text invariant | ✅ done, green on the real book |
-| M2b — Local model selection | ✅ done → [`docs/model-selection.md`](docs/model-selection.md) |
-| M2 — Detection & triage (Tier 1) | ✅ segmentation + triage over the full book |
-| M3 — Rendering + EPUB 2→3 + KEPUB | ✅ **done and device-verified** — see §6.6b |
-| M4 — Local LLM adjudication at book scale | ✅ **full book run** — 12,302 segments, 2,556 LLM calls, 726 footnotes, 73 min, $0 |
-| **Decision trace** (`--trace` / `joven explain`) | ✅ added — see §6.7 |
-| M5 — Review & corrections | ✅ `joven review` (local UI) + `joven add`; round-trip verified |
-| M6 — Read the book | ✅ annotated KEPUB on the device, 11 of 11 integrity checks green |
+| Lossless round-trip + `epubcheck` + text invariant | green on the real book |
+| Detection & triage (Tier 1) | segmentation + triage over the full book |
+| Local model selection | [`docs/model-selection.md`](docs/model-selection.md) |
+| Rendering + EPUB 2→3 + KEPUB | device-verified — see §6.6b |
+| Local LLM adjudication at book scale | full book run — 12,302 segments, 2,556 LLM calls, 726 footnotes, 73 min, $0 |
+| Decision trace (`--trace` / `joven explain`) | see §6.7 |
+| Review & corrections | `joven review` (local UI) + `joven add`; round-trip verified |
+| The finished book | annotated KEPUB on the device, 11 of 11 integrity checks green |
 
 The first full-book run paid for itself by exposing two false-suppression bugs
 that no synthetic case had caught — both traced to the same root cause, and both
-now fixed and pinned by tests drawn from the real corpus (§8).
+now fixed and pinned by tests drawn from the real corpus (§7).
 
-**364 tests passing, ruff clean.** Verified on the real book: lossless
+**335 tests passing, ruff clean.** Verified on the real book: lossless
 round-trip, text-preservation invariant, `epubcheck` clean **as EPUB 3**,
 noteref→footnote integrity, and KEPUB conversion preserving all 623,144
 characters of prose with all `epub:type` markup intact.
@@ -250,7 +249,6 @@ best language-ID ecosystem and best LLM/translation clients.
 | Language ID | **`lingua-language-detector`** | Validated above; gives calibrated confidence values, which the whole triage design depends on. `langdetect` does not. |
 | Sentence segmentation | **`pysbd`** (or hand-rolled) | Must not split on `Sr.`, `Sra.`, ellipses |
 | LLM (default) | **Ollama** via HTTP (`httpx`) | Local, free, offline. No SDK needed — the REST API is two endpoints. |
-| LLM (opt-in, future) | **`anthropic`** SDK | Wired + contract-tested, not called by default |
 | KEPUB conversion | **`kepubify`** (`brew`) | Standalone binary; no Calibre dependency |
 | CLI | **`typer`** | Subcommands, good `--help` |
 | Validation | **`epubcheck`** (`brew`) | External gate; Java present at `/usr/bin/java` |
@@ -290,7 +288,7 @@ joven verify   book.annotated.epub              # epubcheck + text-preservation 
 `detect` and `render` are separate commands on purpose — that separation *is* the
 correction workflow.
 
-### 4.3 Translation backend → **local LLM via Ollama** ✅ decided (offline-first)
+### 4.3 Translation backend → **local LLM via Ollama**
 
 The task is **not** pure translation. It is simultaneously:
 1. **detection** — is this fragment Spanish at all? (the 887-sentence problem)
@@ -329,9 +327,8 @@ Tag-stripping also cut the escalation rate from the predicted 74% to a **measure
 | Option | Detection | Span | Context | Cost | Verdict |
 |---|---|---|---|---|---|
 | **Local LLM (Ollama, 7–14B Q4)** | ✅ | ✅ | ✅ | **$0** | ✅ **Default.** Weaker than frontier models on literary idiom, but the pipeline's escalation design means we only ask it about pre-filtered candidates, and the review step (§6.4) catches its misses. |
-| Argos Translate / OPUS-MT | ❌ | ❌ | ❌ | $0 | Pure NMT — translates whatever you hand it. No detection, no span selection, no context window. Would cheerfully "translate" `Yes mam.` Useful only as a *translation-only* backend behind a separate detector. Keep as a comparison point. |
-| Claude API | ✅ | ✅ | ✅ | ~$0.32–$1.61/book | **Deferred, kept as a protocol implementation.** Best accuracy, but not worth spending on at this stage. Wire the interface, don't call it. |
-| Google Translate API | ❌ | ❌ | ❌ | $ + GCP setup | Rejected. Same NMT limitations as Argos, plus billing setup and shipping the book text to Google. |
+| Argos Translate / OPUS-MT | ❌ | ❌ | ❌ | $0 | Pure NMT — translates whatever it is handed. No detection, no span selection, no context window. Would cheerfully "translate" `Yes mam.` Useful only as a *translation-only* backend behind a separate detector. Keep as a comparison point. |
+| Hosted APIs (Claude, GPT, Gemini) | ✅ | ✅ | ✅ | per-book billing | Rejected. Better on literary idiom, but it puts a price and an API key on every run and ships the book's text to a third party. The offline pipeline is the point. |
 
 **Design for this** — a `Translator` protocol so the backend is a one-flag swap:
 
@@ -341,21 +338,14 @@ class Translator(Protocol):
 
 # implementations
 StubTranslator     # deterministic, offline, used by the entire test suite
-OllamaTranslator   # DEFAULT — local, free
-ClaudeTranslator   # implemented + contract-tested, opt-in via --backend claude
-ArgosTranslator    # optional, translation-only comparison baseline
+OllamaTranslator   # the shipping backend — local, free
 ```
 
-```bash
-joven detect book.epub                      # local model, free
-joven detect book.epub --backend claude     # future, opt-in only
-```
+Because the sidecar is the durable artifact (§3.1), the low-confidence subset can
+be re-run through a different backend later without redoing anything —
+`rejected`/`edited` stay sticky.
 
-Because the sidecar is the durable artifact (§3.1), you can start with the local
-model, read the book, and later re-run only the low-confidence subset through a
-better backend without redoing anything — `rejected`/`edited` stay sticky.
-
-### 4.4 Annotation mechanism → **EPUB 3 popup footnotes, targeting Kobo** ✅ decided
+### 4.4 Annotation mechanism → **EPUB 3 popup footnotes, targeting Kobo**
 
 Target: **Kobo, popup footnotes, one footnote per paragraph.**
 
@@ -383,7 +373,7 @@ Package changes required (isolated, tested transform):
 | each annotated XHTML | add `xmlns:epub="http://www.idpf.org/2007/ops"` to `<html>` |
 | `stylesheet1.css` | append `.joven-note` / `.joven-footnote` rules (superscript marker; `aside` display rules) |
 
-**Output format → KEPUB is the default** ✅ decided
+**Output format → KEPUB is the default**
 
 KEPUB is Kobo's own flavour (what the Kobo store ships) and renders better on
 device. Pipeline:
@@ -414,7 +404,7 @@ joven render book.epub annotations.json --no-kepub       # EPUB 3 only (debuggin
 **Other Kobo notes:**
 
 - **Sideload over USB** — mount the device and copy the `.kepub.epub` in.
-- **Verify popup behavior on your actual model/firmware in M3, as KEPUB.** Kobo
+- **Verify popup behaviour on the actual model/firmware, as KEPUB.** Kobo
   supports EPUB 3 `noteref`/`footnote` popups, but rendering has historically
   varied by firmware, and kepubify rewrites the XHTML (it wraps text in
   `<span class="koboSpan">` elements for its own pagination/highlighting). That
@@ -429,16 +419,18 @@ joven render book.epub annotations.json --no-kepub       # EPUB 3 only (debuggin
 `aside` must be styled so non-conforming readers don't dump the note inline:
 
 ```css
-aside.joven-footnote { display: none; }        /* conforming readers override for popup */
+/* The sketch below is what was planned. The device test overturned the first
+   rule — display:none is what broke Kobo. See §6.6b for what actually shipped. */
+aside.joven-footnote { display: none; }        /* WRONG — see §6.6b */
 a.joven-note { vertical-align: super; font-size: 0.7em; text-decoration: none; }
 ```
 
-**Build order within M3:** ship the trivial inline-bracket renderer *first*
-(`Vaya con Dios. [Go with God.]`) purely to prove the insertion pipeline and the
-text-preservation invariant end-to-end. Then build the real popup renderer. The
+**Build order:** the trivial inline-bracket renderer came *first*
+(`Vaya con Dios. [Go with God.]`), purely to prove the insertion pipeline and the
+text-preservation invariant end-to-end, and the popup renderer followed. The
 inline renderer stays permanently useful as a debug/diff view.
 
-### 4.5 Annotation granularity → **one footnote per paragraph** ✅ decided
+### 4.5 Annotation granularity → **one footnote per paragraph**
 
 Detect per *sentence* (that's where the confidence signal lives), then **group
 contiguous Spanish sentences within a single paragraph into one annotation**.
@@ -510,7 +502,7 @@ labelled fixture:
 
 > ⚖️ **Copyright note for fixtures:** do not commit the EPUB. Commit only short
 > labelled sentence fragments (fair-use scale) plus a small synthetic EPUB built
-> in code. Gate the real-book test behind an env var pointing at your local copy.
+> in code. Gate the real-book test behind an env var pointing at a local copy.
 
 ### 5.4 Test suite (runs on build)
 
@@ -532,12 +524,11 @@ tests/
     └── test_real_book.py        opt-in via JOVEN_TEST_EPUB env var
 ```
 
-Hard rule: **no network in tests.** `StubTranslator` everywhere; the Claude path
-gets contract tests against recorded fixtures.
+Hard rule: **no network in tests.** `StubTranslator` everywhere.
 
 ---
 
-## 6. The corrections workflow (your 80/100 problem)
+## 6. The corrections workflow
 
 Two failure classes need different answers.
 
@@ -566,7 +557,7 @@ destroy every manual fix. Content hashes survive re-runs.
       "spanish_span": [0, 17],            // char offsets — excludes "he said."
       "translation": "Listen to me, young man, he said. I know nothing. That is the truth.",
       "detector_confidence": 0.99,
-      "model": "claude-opus-5",
+      "model": "qwen3:8b",
       "status": "auto"                    // auto | approved | edited | rejected
     }
   ]
@@ -584,7 +575,7 @@ Re-running `joven detect` on an existing sidecar:
 | `approved` | **Never touch** |
 | `rejected` | **Never re-add**, even if the detector now flags it confidently |
 
-So your manual work monotonically accumulates and re-runs are always safe.
+So manual work monotonically accumulates and re-runs are always safe.
 
 ### 6.4 Fixing *mistranslations* → proactive review, not reactive
 
@@ -648,7 +639,7 @@ signals, both cheap:
 
 The first attempt flagged **20% of the book**, because the Spanish span *includes
 the dialogue tag* and so `said`/`called`/`hissed` carry through trivially. That is
-the same root cause as the two gate bugs in §8 — the third time the dialogue tag
+the same root cause as the two gate bugs in §7 — the third time the dialogue tag
 corrupted a measurement — which is why the tag vocabulary is now derived from
 `dialogue.SPEECH_VERBS` rather than hand-listed. After that: **19 of 725 (3%)**,
 essentially all genuine, the rest being untranslatable regionalisms (`ejido`,
@@ -660,7 +651,7 @@ re-reading the paragraph. Book order for the remainder is not just a fallback:
 reading in narrative sequence is how you catch a translation that is fine in
 isolation but wrong for the scene.
 
-Then `joven render` and you're done.
+Then `joven render`, and that is the whole loop.
 
 ### 6.5 Fixing *missed* passages → three escape hatches
 
@@ -690,7 +681,7 @@ Then `joven render` and you're done.
 > findings are the expensive part and would otherwise have to be rediscovered.
 
 **Problem it solves.** You're 200 pages in and hit a Spanish line the tool missed.
-Without this, your options are to write it on paper or remember it, then later hunt
+Without this, the options are to write it on paper or remember it, then later hunt
 through 4,465 paragraphs to find it. Both are annoying enough that in practice you
 won't, and misses never get fixed.
 
@@ -726,7 +717,7 @@ joven add annotations.json --from-kobo /Volumes/KOBOeReader/.kobo/KoboReader.sql
 joven render book.epub annotations.json -o out/     →  copy .kepub.epub back to device
 ```
 
-The marker note matters: without it, `joven add` would hoover up your ordinary
+The marker note matters: without it, `joven add` would hoover up ordinary
 reading highlights as translation requests. Filtering on the note keeps the two
 uses of highlighting separate.
 
@@ -802,7 +793,7 @@ being linked to comes after the location being linked from"**.
 * **`display: none` is fatal.** No layout box ⇒ nothing to navigate to ⇒ Kobo
   falls back to position zero. This was the original bug.
 * **Adjacency prevents the popup.** A note immediately after its paragraph simply
-  renders inline. The M3b "notes must be adjacent" change was a wrong inference
+  renders inline. The "notes must be adjacent" change was a wrong inference
   from a single confounded test, and it was *encoded as a verification check* that
   then defended the mistake. Both are gone; the check now tests Kobo's four
   published conditions instead.
@@ -846,11 +837,14 @@ two notes preview. That distinguishes position from paragraph identity in one pa
 
 ### Shipping recipe
 
-`FootnoteRenderer` defaults are now the surviving recipe: `placement="file"`,
-`hide="visible"`, `element="aside"`, `epub:type` present, backlink present. Apple
-Books renders these as proper popups throughout; Kobo previews some and navigates
-correctly for the rest. The other placements and hide modes are kept solely for
-diagnosis.
+`FootnoteRenderer` *is* the surviving recipe — one note per file, note visible in
+the flow, `<aside>`, `epub:type` on marker/note/backlink. Apple Books renders these
+as proper popups throughout; Kobo previews some and navigates correctly for the rest.
+
+The other nine recipes were a device-test harness, and once this table answered the
+question they were removed from the library rather than left as parameters: the
+measurements above are the durable result, not the code that produced them. The
+build that ran them is in the history at `tools/build_variants.py`.
 
 ---
 
@@ -891,7 +885,7 @@ jq -c 'select(.outcome=="escalated") | [.tier1_confidence, .text]' trace.jsonl |
 
 ### What the first full trace immediately taught us
 
-Tier 1 over all **12,120 segments** of the book — figures here and in §8 come from
+Tier 1 over all **12,120 segments** of the book — figures here and in §7 come from
 a *damaged scan* of *The Crossing*, the copy the project was developed against.
 The final run used a clean Knopf edition (12,302 segments); the damaged-copy numbers
 are kept because the bugs they exposed are the interesting part.
@@ -920,76 +914,7 @@ A small hand-built benchmark could not have shown this.
 
 ---
 
-## 7. Roadmap
-
-Each milestone ends with something runnable and tested.
-
-### M0 — Skeleton (½ day)
-`uv`/venv, `pyproject.toml`, `typer` CLI, pytest, ruff. `joven inspect` prints the
-structure table from §1. **Exit:** `joven inspect` works on the real book.
-
-### M1 — Lossless round-trip (1 day) ← *do not skip or reorder*
-Unpack → parse → re-serialize → repack, with **zero** changes. Get `mimetype`
-STORED-first, entry order, and XHTML byte-stability right. Wire up `epubcheck`.
-**Exit:** `joven render` with an empty sidecar produces a file that passes
-`epubcheck` and the text-preservation invariant. *This milestone is the
-foundation of all trust in the tool — the translation is worthless if the
-repacking corrupts the book.*
-
-### M2 — Detection + triage, no LLM (1–2 days)
-Segmentation, lingua triage, tag-strip booster, sidecar writing. Build the
-labelled golden set here. **Exit:** precision/recall reported on the golden set;
-`detect --no-llm` emits a sidecar of confident candidates + an escalation queue.
-
-### M2b — Local model selection (½ day, parallelizable with M2)
-Benchmark Ollama candidates (7–14B Q4, within the ~8–10 GB budget) on the §2.2
-adversarial set: the must-be-English traps (`Go on.`, `Yes mam.`,
-`I dont intend to.`), the must-be-Spanish fragments (`Tantos, said the man.`,
-`Güero, he said.`, `Sí, said the Mexican.`, `Tan horrible.`), the loanword
-paragraphs that must be left alone (`matríz`, `copo`, `candela`), and the
-span-splitting cases (B and D from §1.1). Score classification accuracy, span
-correctness, translation quality, and tokens/sec.
-**Exit:** a chosen model + recorded numbers in `docs/model-selection.md`.
-
-### M3 — Rendering + **early Kobo device test** (2 days)
-Text-node insertion with multi-span offset correctness. Order matters:
-
-1. Inline-bracket renderer (proves insertion + preserves the invariant)
-2. EPUB 2→3 package upgrade (`content.opf`, `nav.xhtml`, `epub:` namespace, CSS)
-3. Popup footnote renderer (`noteref` + `aside`)
-4. `epubcheck` gate on the EPUB 3, **then** `kepubify` → `.kepub.epub`
-5. **Sideload a hand-made 3-annotation KEPUB to the Kobo and confirm the popup
-   actually works** — before M4, before the full-book run
-
-Step 5 is the real gate, and it must be tested **as KEPUB** — kepubify rewrites the
-XHTML and injects `koboSpan` elements, which is exactly the kind of transform that
-could disturb our markers. If popups misbehave on your firmware you find out here
-for the cost of a USB copy, and pivot to endnote links with zero rework (same
-sidecar, different renderer). Discovering it in M6 would be painful.
-
-**Exit:** a 3-annotation sample renders with working popups on the physical Kobo as
-a `.kepub.epub`, and `joven verify` is green on the intermediate EPUB 3.
-
-### M4 — Local LLM adjudication + translation (1–2 days)
-Batched prompts with surrounding context, JSON-schema-constrained output for
-`{is_spanish, spans, translation}`, on-disk response cache keyed by content hash,
-concurrency tuned to the machine. **Exit:** full-book pass at $0; the 887 ambiguous
-sentences correctly triaged; cache makes re-runs instant.
-
-### M5 — Review & corrections (1–2 days)
-HTML coverage report, then the localhost review UI. `joven add`. Merge semantics
-with sticky `edited`/`approved`/`rejected`. **Exit:** you can fix a bad
-translation and re-render without re-running detection.
-
-### M6 — Read the book. 🎉
-Then harden based on what actually annoyed you.
-
-**Explicitly out of scope for v1:** other input formats (MOBI/AZW3/PDF), other
-language pairs, a GUI, DRM handling, distribution.
-
----
-
-## 8. Decisions
+## 7. Decisions
 
 ### Resolved
 
@@ -1002,11 +927,11 @@ language pairs, a GUI, DRM handling, distribution.
 | Language | Python 3.13 |
 | EPUB I/O | `zipfile` + `lxml` — **not** `ebooklib` |
 | Form factor | CLI, with a local HTML/localhost review step |
-| Translation backend | **Local LLM via Ollama** (offline, $0) — the only path in use. `--backend claude` is built and tested but **unused**: a Claude Pro subscription does not include API access, and no spend is planned. |
+| Translation backend | **Local LLM via Ollama** (offline, $0) — the only backend. No hosted-API path, by design. |
 | State model | `annotations.json` sidecar as source of truth; epub never edited in place |
 | Embedded loanwords | **No footnote** for a lone Spanish word inside an English clause — see below |
 
-### Embedded loanwords → **not annotated** ✅ decided
+### Embedded loanwords → **not annotated**
 
 `matríz`, `copo`, `candela`, `vaquero`, `orgullo` inside English narration get no
 footnote. McCarthy uses them as texture; annotating each one is constant noise for
@@ -1059,7 +984,7 @@ span/OCR mismatch harmless, and it is strictly simpler than tightening the
 mismatch handling. The 4 remaining suppressions are each exactly one Spanish word
 in English prose (`Cuidado`, `ciénega`, `sefior`, `Vámonos`) — correct.
 
-### The similarity veto → **suppress no-op translations** ✅ decided
+### The similarity veto → **suppress no-op translations**
 
 A footnote whose "translation" repeats the source teaches the reader nothing, and
 the models produce them in two distinct ways:
@@ -1128,17 +1053,21 @@ suppressions. Threshold changes should be justified this way before a re-run.
 
 ### Still open (defer — decide with evidence, not up front)
 
-1. **Which local model.** Benchmarked in M2b against the §2.2 adversarial cases →
+1. **Which local model.** Benchmarked against the §2.2 adversarial cases →
    [`docs/model-selection.md`](docs/model-selection.md).
-2. ~~**Marker glyph.**~~ ✅ **Decided: `*`** (`MARKER_GLYPH` in
+2. **Marker glyph — settled: `*`** (`MARKER_GLYPH` in
    [`render/annotate.py`](src/joven/render/annotate.py)). Chosen against the real
-   Kobo page in M3 and device-verified across all ten markup recipes (§6.6b).
+   Kobo page and device-verified across all ten markup recipes (§6.6b).
 3. **Kobo highlight round-trip** (§6.6). Deferred past v1 — needs the device in
    hand to confirm the schema.
 
 ---
 
-## 9. Serious challenges — ranked by risk
+## 8. Serious challenges — ranked by risk
+
+The register as it stood before implementation, kept because the mitigations are
+what the design is *for*. Every item here has since been settled; where a
+mitigation was overturned by measurement, the section it links to says so.
 
 | # | Challenge | Severity | Mitigation |
 |---|---|---|---|
@@ -1146,24 +1075,13 @@ suppressions. Threshold changes should be justified this way before a re-run.
 | 2 | **Mixed-language sentences** — the unit of translation isn't a clean language span (cases B/D) | 🔴 High | Char-offset spans in the sidecar; LLM returns the span; renderer anchors the marker at the span end. Keeping the English tag inside the translated source and reproducing it is acceptable and often reads better. |
 | 3 | **Spanish loanwords inside English narration** (`matríz`, `copo`, `candela`, `güero`, `vaquero`) | 🟠 Med-High | Minimum-Spanish-content rule + loanword allowlist + LLM confirmation. Never annotate a sentence whose Spanish span is a single non-dialogue word. |
 | 4 | **McCarthy's nonstandard orthography** (`Se fué`, `Dieciseis`, `matríz`) and total absence of quotation marks | 🟠 Med | LLM handles it; dictionary/rule-based approaches do not. No-quotes means dialogue-tag detection is heuristic — hence the LLM. |
-| 5 | **Kobo popup-footnote fidelity varies by firmware** on a sideloaded, upgraded-from-EPUB-2 file | 🟠 Med | Physical device test in M3 step 4 with a 3-annotation sample, before any LLM spend. Fallbacks (KEPUB, endnote links) reuse the same sidecar — zero rework. |
-| 6 | **Marker placement aesthetics** — where does a superscript go in unpunctuated dialogue without wrecking the rhythm? | 🟡 Low-Med | Anchor at end of the Spanish span, before the English tag. Configurable glyph. Eyeball it on the real Kobo page in M3. |
-| 7 | **Artistic intent.** McCarthy *chose* not to translate — the opacity is deliberate. | 🟡 Low-Med (design, not technical) | Popup footnotes are the right call here: the page reads unchanged until you deliberately tap. Also render a clean unannotated copy from the same sidecar so you can switch if the markers start to grate. |
+| 5 | **Kobo popup-footnote fidelity varies by firmware** on a sideloaded, upgraded-from-EPUB-2 file | 🟠 Med | Physical device test with a 3-annotation sample, before any LLM run. Fallbacks (KEPUB, endnote links) reuse the same sidecar — zero rework. |
+| 6 | **Marker placement aesthetics** — where does a superscript go in unpunctuated dialogue without wrecking the rhythm? | 🟡 Low-Med | Anchor at end of the Spanish span, before the English tag. Configurable glyph. Eyeball it on the real Kobo page. |
+| 7 | **Artistic intent.** McCarthy *chose* not to translate — the opacity is deliberate. | 🟡 Low-Med (design, not technical) | Popup footnotes are the right call here: the page reads unchanged until the reader deliberately taps. A clean unannotated copy renders from the same sidecar, so the markers can be dropped at any time. |
 | 8 | **EPUB 2→3 package upgrade** touches `content.opf`, adds namespaces, may need a nav document | 🟡 Low-Med | Guard with `epubcheck` in `--version 3.0` mode; keep the upgrade an isolated, tested transform |
 | 9 | **DRM'd inputs** (not this file, but the next one) | 🟢 Low | Detect `META-INF/encryption.xml` in `inspect` and fail with a clear message rather than producing garbage |
 | 10 | **LLM nondeterminism** across re-runs | 🟢 Low | Content-hash response cache; the sidecar is committed, so translations are frozen once reviewed. Pin `temperature=0` and the model tag. |
-| 11 | **Local 7–14B model is weaker than a frontier model** on literary Spanish idiom and on span selection | 🟠 Med | Accepted tradeoff for $0. Mitigated by: only asking it about pre-filtered candidates; the confidence-sorted review pass (§6.4); and the sidecar design, which lets a better backend later re-run *only* the low-confidence subset without discarding reviewed work. Quantified in M2b rather than assumed. |
-| 12 | **kepubify's `koboSpan` injection could disturb footnote markers or `aside` handling** | 🟠 Med | KEPUB is what gets device-tested in M3 step 5; `verify` asserts noteref→footnote integrity on the EPUB 3, and a structural diff catches kepubify surprises |
+| 11 | **Local 7–14B model is weaker than a frontier model** on literary Spanish idiom and on span selection | 🟠 Med | Accepted tradeoff for $0. Mitigated by: only asking it about pre-filtered candidates; the confidence-sorted review pass (§6.4); and the sidecar design, which lets a better backend later re-run *only* the low-confidence subset without discarding reviewed work. Quantified by benchmark rather than assumed. |
+| 12 | **kepubify's `koboSpan` injection could disturb footnote markers or `aside` handling** | 🟠 Med | KEPUB is what gets device-tested; `verify` asserts noteref→footnote integrity on the EPUB 3, and a structural diff catches kepubify surprises |
 
 ---
-
-## 10. Immediate next step
-
-M1. Get lossless round-trip + `epubcheck` + the text-preservation invariant green
-before writing a single line of translation code. Everything downstream is
-worthless if the repacking corrupts the book, and it's much cheaper to establish
-that guarantee now than to debug a subtly-broken 324 KB zip later.
-
-```bash
-brew install epubcheck
-```

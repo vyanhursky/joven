@@ -89,7 +89,7 @@ def is_embedded_loanword(
     if not spanish_text.strip():
         return False
 
-    # The policy is about a single *word* (DESIGN.md §8, embedded loanwords).
+    # The policy is about a single *word* (DESIGN.md §7, embedded loanwords).
     # Anything longer is a Spanish utterance the reader needs, however much
     # English surrounds it — and the surrounding-English test alone got these
     # badly wrong on the full book:
