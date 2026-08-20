@@ -168,5 +168,4 @@ On the 27 cases: 12 accepted by Tier 1, 5 rejected by Tier 1, 10 escalated.
 | Option | Why not |
 |---|---|
 | Argos Translate / OPUS-MT | Pure NMT: translates whatever it's handed. No detection, no span selection, no context. Would "translate" `Yes mam.` Only viable behind a separate detector, and Tier 2 needs to do adjudication, not just translation. |
-| Claude API | Best accuracy, ~$0.32–$1.61 per full-book pass — deferred by choice. `ClaudeTranslator` stays wired so the low-confidence subset can be re-run later without discarding reviewed work. |
 | Models >14B | Exceed the memory budget on 16 GB. |

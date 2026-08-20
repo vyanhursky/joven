@@ -29,8 +29,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.5"]
-# The paid backend is opt-in: the offline pipeline must keep working without it.
-claude = ["anthropic>=0.122"]
 
 [project.urls]
 Homepage = "https://github.com/vyanhursky/joven"

@@ -6,27 +6,17 @@ from pathlib import Path
 
 import typer
 
-from . import pricing
 from .detect.pipeline import detect as run_detect
 from .detect.triage import Triager
 from .epub.archive import EpubArchive, EpubError
 from .epub.document import iter_text_units
 from .epub.package import read_package
-from .estimate import measure as run_measure
-from .estimate import report as run_report
 from .kepub import KepubError
 from .model import Annotation, Sidecar, Status, normalize, occurrence_indices
 from .render import RenderError, render_epub
 from .review import serve as serve_review
 from .trace import Outcome, Tracer, load_trace
-from .translate import (
-    ClaudeTranslator,
-    SpendCapExceeded,
-    claude_available,
-    get_translator,
-    installed_models,
-    ollama_available,
-)
+from .translate import get_translator, installed_models, ollama_available
 from .verify import verify as run_verify
 
 app = typer.Typer(
@@ -195,7 +185,6 @@ def verify(
     typer.secho(f"all {len(findings)} checks passed", fg=typer.colors.GREEN, bold=True)
 
 
-
 @app.command()
 def detect(
     epub: Path = typer.Argument(..., exists=True, dir_okay=False, help="Source EPUB"),
@@ -204,16 +193,9 @@ def detect(
         None, "--trace", help="Write a JSONL decision trace (one record per segment)"
     ),
     backend: str = typer.Option(
-        "ollama", "--backend", help="ollama | claude | stub | none (tier 1 only)"
+        "ollama", "--backend", help="ollama | stub | none (tier 1 only)"
     ),
-    model: str = typer.Option(
-        "qwen3:8b", "--model", help="Ollama model tag, or a Claude model id"
-    ),
-    max_cost: float = typer.Option(
-        2.00,
-        "--max-cost",
-        help="Abort a paid run once this much has been spent (USD). Claude backend only.",
-    ),
+    model: str = typer.Option("qwen3:8b", "--model", help="Ollama model tag"),
     limit: int | None = typer.Option(None, "--limit", help="Only scan the first N paragraphs"),
     merge: bool = typer.Option(
         True, "--merge/--overwrite", help="Merge into an existing sidecar, keeping human edits"
@@ -244,26 +226,7 @@ def detect(
                 err=True,
             )
             raise typer.Exit(2)
-        if backend == "claude":
-            ok, why = claude_available()
-            if not ok:
-                # Without this the run does not fail — it burns an hour making
-                # 2,544 failing calls and writes an empty sidecar.
-                typer.secho(
-                    f"error: cannot authenticate to the Claude API\n       {why}\n"
-                    f"       set ANTHROPIC_API_KEY, or run: ant auth login",
-                    fg=typer.colors.RED,
-                    err=True,
-                )
-                raise typer.Exit(2)
         translator = get_translator(backend, model)
-        if isinstance(translator, ClaudeTranslator):
-            translator.max_cost_usd = max_cost
-            typer.secho(
-                f"paid backend: {translator.name}, hard cap ${max_cost:.2f}\n"
-                f"  run 'joven estimate' first if you have not costed this book",
-                fg=typer.colors.YELLOW,
-            )
 
     if translator is None:
         typer.secho(
@@ -273,33 +236,15 @@ def detect(
         )
 
     with Tracer(path=trace) as tracer:
-        try:
-            sidecar, result = run_detect(
-                epub, triager=Triager(), translator=translator, tracer=tracer, limit=limit
-            )
-        except SpendCapExceeded as exc:
-            # The partial trace is already on disk and is the useful artifact —
-            # it says exactly how far the money went.
-            typer.secho(f"\nABORTED: {exc}", fg=typer.colors.RED, bold=True, err=True)
-            raise typer.Exit(3) from exc
+        sidecar, result = run_detect(
+            epub, triager=Triager(), translator=translator, tracer=tracer, limit=limit
+        )
         report = tracer.format_report()
         band = tracer.band_samples(8)
         rejections = tracer.llm_rejections(8)
         errors = tracer.errors()
 
     typer.echo(report)
-    if isinstance(translator, ClaudeTranslator):
-        typer.secho(
-            f"\n  spent                 ${translator.spent:.2f} of "
-            f"${translator.max_cost_usd:.2f} over {translator.calls:,} calls",
-            bold=True,
-        )
-        if translator.calls and not translator.cache_active:
-            typer.secho(
-                "  WARNING: prompt cache never engaged — the prefix is below this "
-                "model's minimum,\n           so every call paid full price.",
-                fg=typer.colors.YELLOW,
-            )
     typer.echo(f"\n  paragraphs scanned    {result.paragraphs_scanned:,}")
     typer.echo(f"  annotations           {len(result.annotations):,}")
 
@@ -486,55 +431,3 @@ def add(
 
 if __name__ == "__main__":
     app()
-
-
-@app.command()
-def estimate(
-    epub: Path = typer.Argument(..., exists=True, dir_okay=False, help="Source EPUB"),
-    model: str = typer.Option(
-        pricing.DEFAULT_MODEL, "--model", help="Claude model id to price against"
-    ),
-    limit: int | None = typer.Option(None, "--limit", help="Only scan the first N paragraphs"),
-    exact: bool = typer.Option(
-        True,
-        "--exact/--offline",
-        help="Calibrate token counts against the API (needs credentials; not billed as usage)",
-    ),
-) -> None:
-    """Cost a paid run before making a single translation call.
-
-    Tier 1 is offline, so the escalation count — the thing that actually drives
-    the bill — is free to compute exactly. Only token *sizing* needs the API, and
-    only for a 25-call calibration sample.
-    """
-    if model not in pricing.MODELS:
-        known = ", ".join(pricing.MODELS)
-        typer.secho(f"error: unknown model {model!r} — choose from: {known}", fg=typer.colors.RED)
-        raise typer.Exit(2)
-
-    client = None
-    if exact:
-        try:
-            import anthropic
-
-            client = anthropic.Anthropic()
-            # Cheap probe: fail over to offline sizing rather than dying at the end.
-            client.messages.count_tokens(
-                model=model, messages=[{"role": "user", "content": "probe"}]
-            )
-        except Exception as exc:  # noqa: BLE001 - any credential/network problem
-            typer.secho(
-                f"note: falling back to offline sizing ({type(exc).__name__})",
-                fg=typer.colors.YELLOW,
-            )
-            client = None
-
-    typer.echo("running Tier 1 over the book (free, offline)…")
-    measurement = run_measure(epub, model=model, limit=limit, client=client)
-    typer.echo("")
-    typer.echo(run_report(measurement, model=model))
-    typer.echo("")
-    typer.secho(
-        "no translation calls were made — nothing has been spent",
-        fg=typer.colors.GREEN,
-    )

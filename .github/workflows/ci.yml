@@ -55,7 +55,7 @@ jobs:
           kepubify --version
 
       - name: Install the package
-        run: pip install -e '.[dev,claude]'
+        run: pip install -e '.[dev]'
 
       - name: Lint
         run: ruff check src tests tools

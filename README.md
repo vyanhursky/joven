@@ -124,45 +124,9 @@ joven detect book.epub --limit 200                       # scan a slice while it
 joven render book.epub annotations.json --style inline    # bracketed text (debug view)
 ```
 
-### The paid backend — built, not used
+### Improving quality
 
-> **Status: implemented and tested, but not in use.** A **Claude Pro subscription
-> does not include API access** — the API is billed separately, as prepaid credits
-> on the Developer Platform. Spending money on this hobby project isn't wanted, so
-> **the local model is the only path in use.** The code below stays because the
-> analysis behind it is worth keeping and the seam costs nothing to maintain:
-> `anthropic` is an optional dependency, imported lazily, and nothing in the
-> default flow touches it. A test suite covers it with a fake client, so it cannot
-> silently rot.
-
-`--backend claude` swaps in the Claude API, which would fix the error classes the
-8B model got wrong — dialect-English false positives, context bleed, untranslated
-regionalisms. Costing a run first is free, because Tier 1 is offline and the
-escalation count is what drives the bill:
-
-```bash
-joven estimate book.epub --model claude-sonnet-5     # ~2s, makes no paid calls
-joven detect book.epub --backend claude --max-cost 2.00
-```
-
-Measured on this book: **2,556 calls → $1.26 (Sonnet 5, batched)**, and the run
-aborts rather than overshooting `--max-cost`.
-
-Two findings from that work are worth keeping regardless of whether it's ever run:
-
-**75% of the input is the same prompt re-sent ~2,500 times.** The Spanish being
-translated is the minority of the bill. Any prompt-driven pipeline has this shape,
-and it's invisible until you measure it.
-
-**Prompt caching has a minimum prefix length, and it is not monotonic across
-models** — 512 tokens on Opus 5, 1024 on Sonnet 5, 4096 on Haiku 4.5. Below it the
-API silently does not cache: no error, just full price every call. That is why
-**Haiku would cost more than Sonnet here despite being a third of the per-token
-price**, and why the fix is a *bigger* prompt rather than a smaller one.
-
-### Improving quality without spending anything
-
-The levers that are actually available:
+The levers that are available:
 
 1. **A clean source EPUB.** The dominant error class is scan damage the pipeline
    then faithfully translates (`Está fibre.` → "It's fibre."). A clean copy removes

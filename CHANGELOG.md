@@ -48,11 +48,6 @@ target has no position to navigate to; an adjacent note prevents the popup
 entirely; one note per file is required for a single-note preview. Ten markup
 recipes were tested on hardware to find this (DESIGN.md §6.6b).
 
-**Prompt-cache minimums are not monotonic across models** — 512 tokens on Opus 5,
-1024 on Sonnet 5, 4096 on Haiku 4.5 — and below them the API silently does not
-cache. That makes Haiku *more* expensive than Sonnet for this workload despite a
-third the per-token price, and makes a *larger* prompt the cheaper one.
-
 ### Known limitations
 
 - One book, one language pair, one reader. Tuned for McCarthy's border Spanish.
@@ -63,5 +58,5 @@ third the per-token price, and makes a *larger* prompt the cheaper one.
 - Regionalisms with no clean English equivalent (`ejido`, `hacendado`) are often
   left untranslated — 10 of 726 footnotes. A glossary would suit them better than
   a footnote.
-- `ClaudeTranslator` is implemented and tested but unused: a Claude Pro
-  subscription does not include API access.
+- Local models only. There is no hosted-API backend, by design: the pipeline is
+  offline end to end, and a run costs nothing.
