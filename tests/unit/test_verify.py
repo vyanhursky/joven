@@ -28,11 +28,11 @@ def _sidecar() -> Sidecar:
     return s
 
 
-def test_kobo_conditions_hold_for_every_variant(sample_epub: Path, tmp_path: Path) -> None:
+def test_kobo_conditions_hold_for_every_renderer(sample_epub: Path, tmp_path: Path) -> None:
     """The forward-reference and length conditions from Kobo's published spec."""
-    from joven.render.annotate import VARIANTS
+    from joven.render.annotate import RENDERERS
 
-    for key in VARIANTS:
+    for key in RENDERERS:
         result = render_epub(
             sample_epub, _sidecar(), tmp_path / key, renderer=key, make_kepub=False
         )
@@ -41,11 +41,11 @@ def test_kobo_conditions_hold_for_every_variant(sample_epub: Path, tmp_path: Pat
         assert finding.ok, f"{key}: {finding.detail}"
 
 
-def test_noterefs_resolve_for_every_variant(sample_epub: Path, tmp_path: Path) -> None:
-    """Includes the <span> variant, where the id sits on a child of the note."""
-    from joven.render.annotate import VARIANTS
+def test_noterefs_resolve_for_every_renderer(sample_epub: Path, tmp_path: Path) -> None:
+    """Every noteref must point at a note id that exists in the produced book."""
+    from joven.render.annotate import RENDERERS
 
-    for key in VARIANTS:
+    for key in RENDERERS:
         result = render_epub(
             sample_epub, _sidecar(), tmp_path / f"nr-{key}", renderer=key, make_kepub=False
         )
@@ -56,7 +56,7 @@ def test_noterefs_resolve_for_every_variant(sample_epub: Path, tmp_path: Path) -
 def test_one_note_per_file_creates_isolated_documents(sample_epub: Path, tmp_path: Path) -> None:
     """The whole point of file placement: the preview cannot run into the next note."""
     result = render_epub(
-        sample_epub, _sidecar(), tmp_path / "h", renderer="H-file-type", make_kepub=False
+        sample_epub, _sidecar(), tmp_path / "h", renderer="footnote", make_kepub=False
     )
     assert len(result.note_documents) == 2
     produced = EpubArchive.read(result.epub_path)
@@ -69,7 +69,7 @@ def test_note_documents_are_non_linear_spine_items(sample_epub: Path, tmp_path: 
     """epubcheck RSC-011 requires spine membership; linear="no" keeps them out of
     the reading order."""
     result = render_epub(
-        sample_epub, _sidecar(), tmp_path / "h2", renderer="H-file-type", make_kepub=False
+        sample_epub, _sidecar(), tmp_path / "h2", renderer="footnote", make_kepub=False
     )
     produced = EpubArchive.read(result.epub_path)
     opf = produced.get("content.opf").decode()

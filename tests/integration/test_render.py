@@ -260,15 +260,15 @@ def test_real_book_annotated_output_is_valid_epub3(
 
 @pytest.mark.epubcheck
 @pytest.mark.skipif(not epubcheck_available(), reason="epubcheck not installed")
-def test_every_variant_passes_epubcheck(sample_epub: Path, tmp_path: Path, sidecar) -> None:
-    """Regression: the inline variant shipped invalid EPUB 2 for its whole life.
+def test_every_renderer_passes_epubcheck(sample_epub: Path, tmp_path: Path, sidecar) -> None:
+    """Regression: the inline renderer shipped invalid EPUB 2 for its whole life.
 
     ``data-joven`` is HTML5 and EPUB 2 rejects it, but no test had ever run
     epubcheck against a non-footnote renderer, so nothing noticed.
     """
-    from joven.render.annotate import VARIANTS
+    from joven.render.annotate import RENDERERS
 
-    for key in VARIANTS:
+    for key in RENDERERS:
         result = render_epub(
             sample_epub, sidecar, tmp_path / key, renderer=key, make_kepub=False
         )

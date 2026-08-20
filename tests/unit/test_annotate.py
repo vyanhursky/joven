@@ -142,15 +142,6 @@ def test_footnote_ids_link_up_across_files() -> None:
     assert backlink.get("href") == f"../part1.xhtml#{ref.get('id')}"
 
 
-def test_adjacent_placement_keeps_the_note_in_the_same_tree() -> None:
-    data = _html("<p>Se fué.</p>")
-    tree = parse(data)
-    engine = FootnoteRenderer(placement="adjacent")
-    engine.apply(tree, [_annotation("Se fué.", "He is gone.", index=1)])
-    assert not engine.new_documents
-    assert "He is gone." in serialize(tree, original=data).decode()
-
-
 def test_inline_renderer_brackets_the_translation() -> None:
     data = _html("<p>Se fué.</p>")
     tree = parse(data)
@@ -264,29 +255,11 @@ def test_renderer_registry() -> None:
     assert get_renderer("inline").needs_epub3() is True
 
 
-# ------------------------------------------------------- aside placement (Kobo)
+# --------------------------------------------------------- the shipping recipe
 
 
-def test_aside_lands_immediately_after_its_paragraph() -> None:  # noqa: D401
-    """Adjacent placement still works mechanically.
-
-    NB: adjacency is no longer believed to help Kobo — device testing showed an
-    adjacent note renders inline with no popup. Kept because it is a valid
-    placement and the insertion mechanics must stay correct.
-    """
-    data = _html("<p>Se fué.</p><p>Next paragraph.</p>")
-    tree = parse(data)
-    FootnoteRenderer(placement="adjacent").apply(
-        tree, [_annotation("Se fué.", "He is gone.", index=1)]
-    )
-
-    body = tree.getroot().find(f"{{{XHTML_NS}}}body")
-    kinds = [etree.QName(el).localname for el in body]
-    assert kinds == ["p", "aside", "p"], kinds
-
-
-def test_adjacent_placement_preserves_inter_paragraph_whitespace() -> None:
-    """lxml's addnext() steals the tail — regression guard for that."""
+def test_note_insertion_preserves_inter_paragraph_whitespace() -> None:
+    """lxml reassigns tails on insertion — regression guard for that."""
     data = _html("<p>Se fué.</p>\n      <p>Next.</p>")
     tree = parse(data)
     FootnoteRenderer().apply(tree, [_annotation("Se fué.", "He is gone.", index=1)])
@@ -295,66 +268,12 @@ def test_adjacent_placement_preserves_inter_paragraph_whitespace() -> None:
     )
 
 
-def test_end_placement_still_available_for_diagnosis() -> None:
-    data = _html("<p>Se fué.</p><p>Next paragraph.</p>")
-    tree = parse(data)
-    FootnoteRenderer(placement="end").apply(
-        tree, [_annotation("Se fué.", "He is gone.", index=1)]
-    )
-    body = tree.getroot().find(f"{{{XHTML_NS}}}body")
-    kinds = [etree.QName(el).localname for el in body]
-    assert kinds == ["p", "p", "aside"], kinds
-
-
-def test_end_placement_also_preserves_text() -> None:
-    data = _html("<p>Se fué.</p>\n      <p>Next.</p>")
-    tree = parse(data)
-    FootnoteRenderer(placement="end").apply(
-        tree, [_annotation("Se fué.", "He is gone.", index=1)]
-    )
-    assert document_text(serialize(tree, original=data), exclude_inserted=True) == document_text(
-        data, exclude_inserted=False
-    )
-
-
-def test_bad_placement_rejected() -> None:
-    tree = parse(_html("<p>Se fué.</p>"))
-    with pytest.raises(RenderError, match="placement must be"):
-        FootnoteRenderer(placement="sideways").apply(
-            tree, [_annotation("Se fué.", "x", index=1)]
-        )
-
-
-def test_adjacent_placement_with_many_notes_keeps_pairs_together() -> None:
-    data = _html("<p>Se fué.</p><p>English.</p><p>Está bien.</p>")
-    tree = parse(data)
-    FootnoteRenderer(placement="adjacent").apply(
-        tree,
-        [
-            _annotation("Se fué.", "He is gone.", index=1),
-            _annotation("Está bien.", "That's fine.", index=3),
-        ],
-    )
-    body = tree.getroot().find(f"{{{XHTML_NS}}}body")
-    kinds = [etree.QName(el).localname for el in body]
-    assert kinds == ["p", "aside", "p", "p", "aside"], kinds
-    # each aside must follow the paragraph that references it
-    for i, el in enumerate(body):
-        if etree.QName(el).localname != "aside":
-            continue
-        marker = body[i - 1].find(f"{{{XHTML_NS}}}a")
-        assert marker.get("href") == f"#{el.get('id')}"
-
-
-# ------------------------------------------------- footnote variants (Kobo A/B)
-
-
-def test_every_variant_builds_and_preserves_text() -> None:
-    """Whatever the reader quirk, the prose invariant is non-negotiable."""
-    from joven.render.annotate import VARIANTS, get_renderer
+def test_every_renderer_builds_and_preserves_text() -> None:
+    """Whatever the renderer, the prose invariant is non-negotiable."""
+    from joven.render.annotate import RENDERERS
 
     data = _html("<p>Se fué.</p>\n      <p>English.</p>\n      <p>Está bien.</p>")
-    for key in VARIANTS:
+    for key in RENDERERS:
         tree = parse(data)
         engine = get_renderer(key)
         engine.apply(
@@ -371,75 +290,52 @@ def test_every_variant_builds_and_preserves_text() -> None:
         assert engine.css(), f"{key} produced no CSS"
 
 
-def test_visible_variant_does_not_hide_the_note() -> None:
-    """The suspected Kobo fix: no display:none anywhere in the CSS."""
-    from joven.render.annotate import get_renderer
+def test_footnote_css_never_hides_the_note() -> None:
+    """The Kobo bug this recipe exists to avoid.
 
-    css = get_renderer("A-visible").css()
-    assert "display: none" not in css
-
-
-def test_control_variant_reproduces_the_failing_css() -> None:
-    """Kept deliberately so the bug can be reproduced on demand."""
-    from joven.render.annotate import get_renderer
-
-    assert "display: none" in get_renderer("Z-control-hidden").css()
+    A ``display: none`` target generates no layout box, so a reader that treats
+    the marker as an ordinary internal link has nowhere to scroll and falls back
+    to the start of the book. Device-confirmed; see DESIGN.md §6.6b.
+    """
+    assert "display: none" not in get_renderer("footnote").css()
 
 
-def test_offscreen_variant_keeps_a_layout_box() -> None:
-    from joven.render.annotate import get_renderer
+def test_each_note_becomes_its_own_document() -> None:
+    """One note per file is what stops Kobo's preview running into the next note."""
+    data = _html("<p>Se fué.</p>\n      <p>English.</p>\n      <p>Está bien.</p>")
+    tree = parse(data)
+    engine = FootnoteRenderer()
+    engine.apply(
+        tree,
+        [
+            _annotation("Se fué.", "He is gone.", index=1),
+            _annotation("Está bien.", "That's fine.", index=3),
+        ],
+    )
+    assert len(engine.new_documents) == 2
+    for _, body in engine.new_documents:
+        assert body.decode().count('data-joven="note"') == 1
 
-    css = get_renderer("B-offscreen").css()
-    assert "display: none" not in css
-    assert "position: absolute" in css
 
-
-def test_div_variant_emits_div_and_no_backlink() -> None:
-    from joven.render.annotate import get_renderer
-
+def test_note_carries_the_conforming_reader_contract() -> None:
+    """noteref on the marker, footnote on the aside, backlink on the way back."""
     data = _html("<p>Se fué.</p>")
     tree = parse(data)
-    engine = get_renderer("C-div")
+    engine = FootnoteRenderer()
     engine.apply(tree, [_annotation("Se fué.", "He is gone.", index=1)])
-    # C-div is a file-placement variant, so the note body is a separate document
+
+    assert 'epub:type="noteref"' in serialize(tree, original=data).decode()
     note = engine.new_documents[0][1].decode()
-    assert "<div" in note and "<aside" not in note
-    assert 'epub:type="backlink"' not in note
+    assert "<aside" in note
+    assert 'epub:type="footnote"' in note
+    assert 'epub:type="backlink"' in note
     assert "He is gone." in note
 
 
-def test_endnotes_variant_drops_noteref_and_collects_at_end() -> None:
-    """Plain navigation instead of popup semantics — the reliable fallback."""
-    from joven.render.annotate import get_renderer
-
-    data = _html("<p>Se fué.</p><p>English.</p>")
-    tree = parse(data)
-    get_renderer("D-endnotes").apply(tree, [_annotation("Se fué.", "He is gone.", index=1)])
-    out = serialize(tree, original=data).decode()
-    assert 'epub:type="noteref"' not in out
-    assert 'epub:type="footnote"' not in out
-    body = tree.getroot().find(f"{{{XHTML_NS}}}body")
-    assert etree.QName(body[-1]).localname == "aside", "note should be last in body"
-
-
-def test_inline_variant_also_needs_epub3() -> None:
+def test_inline_renderer_also_needs_epub3() -> None:
     """Not for the brackets — for the ``data-joven`` marker.
 
     ``data-*`` is HTML5. EPUB 2's XHTML 1.1 rejects it, so an un-upgraded inline
-    build fails epubcheck with 'attribute "data-joven" not allowed here'. This was
-    latent from the start and only surfaced once a variant build ran epubcheck on
-    inline output.
+    build fails epubcheck with 'attribute "data-joven" not allowed here'.
     """
-    from joven.render.annotate import get_renderer
-
-    assert get_renderer("E-inline").needs_epub3() is True
-
-
-def test_bad_hide_and_element_values_rejected() -> None:
-    tree = parse(_html("<p>Se fué.</p>"))
-    # note: "span" is a *valid* element now — Kobo's own spec example uses one
-    for kwargs in ({"hide": "magic"}, {"element": "table"}, {"placement": "sideways"}):
-        with pytest.raises(RenderError):
-            FootnoteRenderer(**kwargs).apply(
-                tree, [_annotation("Se fué.", "x", index=1)]
-            )
+    assert get_renderer("inline").needs_epub3() is True

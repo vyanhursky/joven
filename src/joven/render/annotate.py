@@ -25,7 +25,7 @@ from typing import Protocol
 
 from lxml import etree
 
-from ..epub.document import JOVEN_ATTR, XHTML_NS, body_of, iter_blocks, text_of
+from ..epub.document import JOVEN_ATTR, XHTML_NS, iter_blocks, text_of
 from ..model import Annotation
 
 EPUB_NS = "http://www.idpf.org/2007/ops"
@@ -125,198 +125,93 @@ class _Base:
 
 @dataclass(slots=True)
 class FootnoteRenderer(_Base):
-    """EPUB 3 footnotes, parameterised so reader quirks can be A/B tested.
+    """EPUB 3 popup footnotes, in the arrangement Kobo actually honours.
 
-    Every knob here exists because a device disagreed with the spec, not for
-    generality's sake.
+    The shape is not a matter of taste — it is what a device test settled
+    (DESIGN.md §6.6b), and each part of it fixes an observed failure:
 
-    Defaults are the recipe that survived device testing on Kobo (see
-    DESIGN.md 6.6b): one note per file, note left visible, ``epub:type`` present.
+    **One note per file.** Kobo's footnote preview does not stop at the target
+    element. With the notes as siblings in the chapter it rendered the tapped note
+    *and every note after it*; end of file is the only boundary it respects.
 
-    ``placement`` — where the note body goes
-        ``"file"`` (default) gives each note its own XHTML document. This is the
-        only arrangement that made Kobo preview a *single* note: its footnote
-        preview does not stop at the target element, so with notes as siblings it
-        rendered the tapped note and every note after it. End of file is the only
-        boundary it respects.
+    **The note stays visible in the flow.** ``display: none`` generates no layout
+    box, so a reader that treats the marker as an ordinary internal link has
+    nowhere to scroll and falls back to the start of the book — which is exactly
+    what Kobo did. Apple Books was unaffected because it implements the
+    ``noteref`` → popup contract and never needs the note laid out.
 
-        ``"adjacent"`` puts the note straight after its paragraph — which Kobo
-        renders inline with no preview at all. ``"end"`` collects notes at the end
-        of ``<body>``, which previews but concatenates. Both are kept for
-        diagnosis, not for shipping.
-
-    ``hide`` — how the note is kept out of the reading flow
-        ``"visible"`` (default) leaves it in the flow. ``"css"`` applies
-        ``display: none``. ``"offscreen"`` positions it off the page.
-
-        **This is the suspected Kobo bug.** ``display: none`` generates no layout
-        box, so a reader that treats the marker as an ordinary internal link has
-        nowhere to scroll and falls back to the start of the book — exactly the
-        observed symptom. Apple Books is unaffected because it implements the
-        ``noteref`` → popup contract and never needs the note laid out.
-
-    ``element`` — ``"aside"`` (per spec) or ``"div"``, for readers that only
-        recognise one.
-
-    ``backlink`` / ``noteref`` — some readers appear to key off these; dropping
-        ``noteref`` turns the marker into a plain navigation link, which is the
-        endnote fallback.
+    **``epub:type`` on both ends.** ``noteref`` on the marker, ``footnote`` on the
+    ``<aside>``, ``backlink`` on the way back — the conforming-reader contract, and
+    the back-link is what makes the endnote fallback usable when it is not honoured.
     """
 
     name: str = "footnote"
-    placement: str = "file"
-    element: str = "aside"
-    hide: str = "visible"
-    backlink: bool = True
-    noteref: bool = True
-    # populated in "file" placement; the caller adds these to the archive
+    # populated as notes are rendered; the caller adds these to the archive
     new_documents: list[tuple[str, bytes]] = field(default_factory=list)
-
-    _PLACEMENTS = ("adjacent", "end", "file")
-    _HIDES = ("visible", "css", "offscreen")
-    _ELEMENTS = ("aside", "div", "span")
 
     def needs_epub3(self) -> bool:
         return True
 
     def css(self) -> str:
-        rules = [
-            "/* --- joven translation footnotes --- */",
-            "a.joven-note {",
-            "  vertical-align: super;",
-            "  font-size: 0.7em;",
-            "  text-decoration: none;",
-            "  line-height: 0;",
-            "  padding: 0 0.15em;",
-            "}",
-        ]
-        if self.hide == "css":
-            rules += [
-                "/* WARNING: suspected cause of Kobo's jump-to-start behaviour —",
-                "   a display:none target has no position to navigate to. */",
-                ".joven-footnote { display: none; }",
-            ]
-        elif self.hide == "offscreen":
-            rules += [
-                "/* Kept in layout (so anchors resolve) but off the page. */",
-                ".joven-footnote {",
-                "  position: absolute;",
-                "  left: -9999px;",
-                "  width: 1px;",
-                "  height: 1px;",
-                "  overflow: hidden;",
-                "}",
-            ]
-        else:
-            rules += [
-                "/* Left in the flow: conforming readers still pop it up, and",
-                "   readers that don't at least render something navigable. */",
-                ".joven-footnote {",
-                "  font-size: 0.85em;",
-                "  margin: 0.35em 0 0.6em 1.2em;",
-                "  text-indent: 0;",
-                "  opacity: 0.75;",
-                "}",
-            ]
-        return "\n".join(rules) + "\n"
-
-    def _validate(self) -> None:
-        for value, allowed, label in (
-            (self.placement, self._PLACEMENTS, "placement"),
-            (self.hide, self._HIDES, "hide"),
-            (self.element, self._ELEMENTS, "element"),
-        ):
-            if value not in allowed:
-                raise RenderError(f"{label} must be one of {allowed}, got {value!r}")
+        return (
+            "/* --- joven translation footnotes --- */\n"
+            "a.joven-note {\n"
+            "  vertical-align: super;\n"
+            "  font-size: 0.7em;\n"
+            "  text-decoration: none;\n"
+            "  line-height: 0;\n"
+            "  padding: 0 0.15em;\n"
+            "}\n"
+            "/* Left in the flow: conforming readers still pop it up, and\n"
+            "   readers that don't at least render something navigable. */\n"
+            ".joven-footnote {\n"
+            "  font-size: 0.85em;\n"
+            "  margin: 0.35em 0 0.6em 1.2em;\n"
+            "  text-indent: 0;\n"
+            "  opacity: 0.75;\n"
+            "}\n"
+        )
 
     def apply(self, tree: etree._ElementTree, annotations: list[Annotation]) -> int:
-        self._validate()
         located = self._locate(tree, annotations)
-        body = body_of(tree)
-        collected: list[etree._Element] = []
         doc_href = annotations[0].href if annotations else ""
 
         for annotation, el in located:
             note_id = f"{NOTE_ID_PREFIX}{annotation.id}"
             ref_id = f"{REF_ID_PREFIX}{annotation.id}"
+            rel, archive_path = self._note_paths(doc_href, annotation.id)
 
+            # Kobo's documented trigger wants a document-plus-node href
+            # ("notes/joven-abc.xhtml#id"), not a bare fragment.
             marker = etree.Element(f"{{{XHTML_NS}}}a")
-            if self.placement == "file":
-                # Kobo's documented trigger wants a document-plus-node href
-                # ("chapter.html#id"), and a one-note-per-file target is the only
-                # reliable way to stop the preview running on into the next note.
-                rel, archive_path = self._note_paths(doc_href, annotation.id)
-                marker.set("href", f"{rel}#{note_id}")
-            else:
-                marker.set("href", f"#{note_id}")
+            marker.set("href", f"{rel}#{note_id}")
             marker.set("id", ref_id)
             marker.set("class", "joven-note")
-            if self.noteref:
-                marker.set(EPUB_TYPE, "noteref")
+            marker.set(EPUB_TYPE, "noteref")
             marker.set(JOVEN_ATTR, "marker")
             marker.text = self.marker_glyph
             insert_at_offset(el, annotation.marker_offset, marker)
 
-            if self.element == "span":
-                # Kobo's own spec example hangs id + epub:type on an inline
-                # <span>, but a span may not contain a <p> and may not sit
-                # directly in <body> — so wrap it in an unmarked block. The
-                # data-joven marker goes on the wrapper, since that is the whole
-                # subtree the text invariant must exclude.
-                note = etree.Element(f"{{{XHTML_NS}}}p")
-                note.set("class", "joven-footnote")
-                note.set(JOVEN_ATTR, "note")
-                paragraph = etree.SubElement(note, f"{{{XHTML_NS}}}span")
-                paragraph.set("id", note_id)
-                if self.noteref:
-                    paragraph.set(EPUB_TYPE, "footnote")
-            else:
-                note = etree.Element(f"{{{XHTML_NS}}}{self.element}")
-                note.set("id", note_id)
-                note.set("class", "joven-footnote")
-                if self.noteref:
-                    note.set(EPUB_TYPE, "footnote")
-                note.set(JOVEN_ATTR, "note")
-                paragraph = etree.SubElement(note, f"{{{XHTML_NS}}}p")
+            note = etree.Element(f"{{{XHTML_NS}}}aside")
+            note.set("id", note_id)
+            note.set("class", "joven-footnote")
+            note.set(EPUB_TYPE, "footnote")
+            note.set(JOVEN_ATTR, "note")
+            paragraph = etree.SubElement(note, f"{{{XHTML_NS}}}p")
 
-            if self.backlink:
-                # A way back matters whenever the note renders as an endnote
-                # rather than a popup.
-                back = etree.SubElement(paragraph, f"{{{XHTML_NS}}}a")
-                if self.placement == "file":
-                    # The note lives in its own document, so a bare "#id" would
-                    # resolve inside *that* file, where the marker's id does not
-                    # exist (epubcheck RSC-012: fragment identifier is not
-                    # defined). Point back at the chapter explicitly.
-                    _, note_path = self._note_paths(doc_href, annotation.id)
-                    back_href = posixpath.relpath(doc_href, posixpath.dirname(note_path))
-                    back.set("href", f"{back_href}#{ref_id}")
-                else:
-                    back.set("href", f"#{ref_id}")
-                if self.noteref:
-                    back.set(EPUB_TYPE, "backlink")
-                back.text = self.marker_glyph
-                back.tail = f" {annotation.translation}"
-            else:
-                paragraph.text = annotation.translation
+            # A way back matters whenever the note renders as an endnote rather
+            # than a popup. The note lives in its own document, so a bare "#id"
+            # would resolve inside *that* file, where the marker's id does not
+            # exist (epubcheck RSC-012). Point back at the chapter explicitly.
+            back = etree.SubElement(paragraph, f"{{{XHTML_NS}}}a")
+            back_href = posixpath.relpath(doc_href, posixpath.dirname(archive_path))
+            back.set("href", f"{back_href}#{ref_id}")
+            back.set(EPUB_TYPE, "backlink")
+            back.text = self.marker_glyph
+            back.tail = f" {annotation.translation}"
 
-            if self.placement == "adjacent":
-                # lxml's addnext() reassigns the tail to the inserted element, which
-                # would silently eat the whitespace between paragraphs and break the
-                # text invariant. Save and restore it explicitly.
-                tail = el.tail
-                el.addnext(note)
-                el.tail = tail
-                note.tail = None
-            elif self.placement == "file":
-                _, archive_path = self._note_paths(doc_href, annotation.id)
-                self.new_documents.append((archive_path, self._note_document(note)))
-            else:
-                collected.append(note)
+            self.new_documents.append((archive_path, self._note_document(note)))
 
-        # 'end' placement only: appended in document order so the notes read sensibly.
-        for note in reversed(collected):
-            body.append(note)
         return len(located)
 
     @staticmethod
@@ -379,64 +274,6 @@ class InlineRenderer(_Base):
         return len(located)
 
 
-# --------------------------------------------------------------------- variants
-#
-# Named builds for device A/B testing. Kobo showed the markers but every tap
-# navigated to the start of the book, while Apple Books rendered the same KEPUB
-# correctly — so the disagreement is about *mechanism*, not validity, and the only
-# way to settle it is to try each mechanism on the hardware.
-#
-# Each entry isolates one hypothesis. Build them all at once: a device round-trip
-# is the expensive step, so testing one hypothesis per trip wastes cycles.
-
-VARIANTS: dict[str, tuple[str, dict]] = {
-    # the shipping default — prime hypothesis: display:none was the whole problem
-    "footnote": ("EPUB 3 popup footnotes, note left in the flow", {}),
-    "A-visible": (
-        "aside + noteref, NO display:none  <-- prime suspect fix",
-        {"hide": "visible"},
-    ),
-    "B-offscreen": (
-        "aside + noteref, positioned off-page (keeps a layout box)",
-        {"hide": "offscreen"},
-    ),
-    "C-div": (
-        "<div> instead of <aside>, no backlink — for readers that only grok div",
-        {"element": "div", "backlink": False, "hide": "visible"},
-    ),
-    "D-endnotes": (
-        "plain in-chapter endnotes: notes at end of body, no epub:type at all",
-        {"placement": "end", "noteref": False, "hide": "visible"},
-    ),
-    "E-inline": ("bracketed text inline — no interaction needed anywhere", {}),
-    # --- round 2, after the device test showed Kobo's "Footnote preview" firing
-    # only for D (no epub:type, notes at end of file). Per Kobo's published spec
-    # the popup needs the target to come *after* the reference, which my
-    # "adjacency" change had quietly undone — so these fill in the cells that
-    # were never tried.
-    "F-type-end": (
-        "epub:type + notes at END of chapter  <-- the cell I never tested",
-        {"placement": "end", "hide": "visible"},
-    ),
-    "G-span-end": (
-        "epub:type on a <span> (Kobo's own documented example element), notes at end",
-        {"placement": "end", "element": "span", "hide": "visible"},
-    ),
-    "H-file-type": (
-        "ONE FILE PER NOTE + epub:type  <-- isolates the preview to a single note",
-        {"placement": "file", "hide": "visible"},
-    ),
-    "I-file-plain": (
-        "one file per note, NO epub:type (relies on Kobo's 4 documented conditions)",
-        {"placement": "file", "noteref": False, "hide": "visible"},
-    ),
-    # the control: what we shipped when Kobo failed. Reproduces the bug on purpose.
-    "Z-control-hidden": (
-        "CONTROL — aside + display:none, i.e. the build that failed on Kobo",
-        {"hide": "css"},
-    ),
-}
-
 RENDERERS: dict[str, type[Renderer]] = {
     "footnote": FootnoteRenderer,  # type: ignore[dict-item]
     "inline": InlineRenderer,  # type: ignore[dict-item]
@@ -444,15 +281,6 @@ RENDERERS: dict[str, type[Renderer]] = {
 
 
 def get_renderer(name: str) -> Renderer:
-    """Build a renderer by name, accepting either a base name or a variant key."""
     if name in RENDERERS:
         return RENDERERS[name]()  # type: ignore[abstract]
-    if name in VARIANTS:
-        _, options = VARIANTS[name]
-        if name == "E-inline":
-            return InlineRenderer()
-        return FootnoteRenderer(**options)  # type: ignore[arg-type]
-    raise RenderError(
-        f"unknown renderer {name!r} — choose from "
-        f"{sorted(set(RENDERERS) | set(VARIANTS))}"
-    )
+    raise RenderError(f"unknown renderer {name!r} — choose from {sorted(RENDERERS)}")
