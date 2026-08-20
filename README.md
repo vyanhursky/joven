@@ -11,13 +11,23 @@ untranslated stretches of Mexican-border Spanish.
 
 ## Status
 
-M1–M5 complete: lossless round-trip, two-tier detection with a full decision
-trace, EPUB 2→3 upgrade, footnote rendering device-verified on a Kobo, KEPUB
-output, and a review pass for triaging translations.
+**Working end to end on a real book.** M1–M6 complete: lossless round-trip,
+two-tier detection with a full decision trace, EPUB 2→3 upgrade, footnote rendering
+device-verified on a Kobo, KEPUB output, a review pass, and a finished book on the
+device.
 
-The full book has been run end to end — 12,120 segments, 2,544 local-LLM calls,
-72 minutes, $0 — and the trace from it caught two false-suppression bugs that
-synthetic tests had missed. Next: human review of the detected passages.
+Last full run — Knopf's 1994 edition of *The Crossing*, 151,865 words:
+
+| | |
+|---|---|
+| segments considered | 12,302 |
+| escalated to the LLM | 2,556 (21%) |
+| footnotes produced | 726 |
+| wall clock / cost | 73 minutes / $0 |
+| integrity checks | 11 of 11 passing |
+
+Two earlier runs against a damaged scan of the same novel paid for themselves by
+exposing bugs no synthetic fixture had caught — see [DESIGN.md](DESIGN.md) §8.
 
 ## Install
 
@@ -35,7 +45,7 @@ ollama pull qwen3:8b
 ```bash
 etx inspect book.epub                                    # structure, DRM, word counts
 etx detect  book.epub -o annotations.json --trace trace.jsonl
-etx review  annotations.json --epub book.epub            # triage, worst-confidence first
+etx review  annotations.json --epub book.epub            # triage, suspect passages first
 etx render  book.epub annotations.json -o out/           # EPUB 3 + KEPUB for the Kobo
 etx verify  out/book.annotated.epub --original book.epub
 ```
@@ -89,12 +99,12 @@ etx estimate book.epub --model claude-sonnet-5     # ~2s, makes no paid calls
 etx detect book.epub --backend claude --max-cost 2.00
 ```
 
-Measured on this book: **2,544 calls → $1.26 (Sonnet 5, batched)**, and the run
+Measured on this book: **2,556 calls → $1.26 (Sonnet 5, batched)**, and the run
 aborts rather than overshooting `--max-cost`.
 
 Two findings from that work are worth keeping regardless of whether it's ever run:
 
-**75% of the input is the same prompt re-sent 2,544 times.** The Spanish being
+**75% of the input is the same prompt re-sent ~2,500 times.** The Spanish being
 translated is the minority of the bill. Any prompt-driven pipeline has this shape,
 and it's invisible until you measure it.
 
@@ -168,7 +178,7 @@ python tools/bench_pipeline.py           # the two-tier system
 ```
 epub → extract text units → segment into sentences
      → TIER 1  lingua triage: confident Spanish / confident English / abstain
-     → TIER 2  local LLM adjudicates the abstention band (~37%)
+     → TIER 2  local LLM adjudicates the abstention band (~21%)
      → annotations.json          ← source of truth, human-editable
      → render (idempotent)  →  .epub  →  kepubify  →  .kepub.epub
 ```
@@ -184,6 +194,28 @@ Two properties are load-bearing and enforced by tests:
 2. **Precision over recall.** A spurious footnote on `Go on.` is worse than a
    missed one, so ambiguous cases escalate rather than guess.
 
-## Legal
+## Licence
 
-For personal use on a book you own. Don't distribute modified copies.
+The **code** is MIT — see [LICENSE](LICENSE). Use it, fork it, ship it.
+
+The **books are not.** That is a separate question, and the distinction matters:
+
+- Bring your own EPUB, legally obtained. This tool reads a file you already have;
+  it does not fetch, share, or unlock anything, and it refuses DRM-protected files
+  outright rather than working around them.
+- The annotated output is a derivative of a copyrighted work. Read it, don't
+  distribute it.
+- **The repository deliberately tracks no book content.** The hazard is not the
+  EPUB but what the pipeline derives from it: a full decision trace holds every
+  segment's source text verbatim — for a 150,000-word novel that is the entire
+  book. `.gitignore` excludes those by pattern, and
+  [`tools/check_no_book_content.py`](tools/check_no_book_content.py) verifies it by
+  *content*, diffing every tracked file against the book itself:
+
+  ```bash
+  python tools/check_no_book_content.py path/to/book.epub
+  ```
+
+  Docs and tests quote short passages to illustrate the detection problem — about
+  1,500 characters in total, longest single quote 78 characters. The checker fails
+  the build if any tracked file exceeds a threshold.

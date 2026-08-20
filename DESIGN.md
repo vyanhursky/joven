@@ -12,9 +12,10 @@ v1 scope: **EPUB input, Spanish→English, Cormac McCarthy's *The Crossing*.**
 | M2b — Local model selection | ✅ done → [`docs/model-selection.md`](docs/model-selection.md) |
 | M2 — Detection & triage (Tier 1) | ✅ segmentation + triage over the full book |
 | M3 — Rendering + EPUB 2→3 + KEPUB | ✅ **done and device-verified** — see §6.6b |
-| M4 — Local LLM adjudication at book scale | ✅ **full book run** — 12,120 segments, 2,544 LLM calls, 72 min, $0 |
+| M4 — Local LLM adjudication at book scale | ✅ **full book run** — 12,302 segments, 2,556 LLM calls, 726 footnotes, 73 min, $0 |
 | **Decision trace** (`--trace` / `etx explain`) | ✅ added — see §6.7 |
 | M5 — Review & corrections | ✅ `etx review` (local UI) + `etx add`; round-trip verified |
+| M6 — Read the book | ✅ annotated KEPUB on the device, 11 of 11 integrity checks green |
 
 The first full-book run paid for itself by exposing two false-suppression bugs
 that no synthetic case had caught — both traced to the same root cause, and both
@@ -890,7 +891,10 @@ jq -c 'select(.outcome=="escalated") | [.tier1_confidence, .text]' trace.jsonl |
 
 ### What the first full trace immediately taught us
 
-Tier 1 over all **12,120 segments** of the real book:
+Tier 1 over all **12,120 segments** of the book — figures here and in §8 come from
+a *damaged scan* of *The Crossing*, the copy the project was developed against.
+The final run used a clean Knopf edition (12,302 segments); the damaged-copy numbers
+are kept because the bugs they exposed are the interesting part.
 
 | Outcome | Segments |
 |---|---|
