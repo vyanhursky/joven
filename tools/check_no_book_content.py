@@ -62,12 +62,62 @@ def book_passages(epub: Path) -> list[str]:
     return passages
 
 
+FORBIDDEN = [
+    ("*.epub", "a book"),
+    ("*.kepub.epub", "a book"),
+    ("*.mobi", "a book"),
+    ("*.azw3", "a book"),
+    ("annotations*.json", "a sidecar (holds the paragraph around every footnote)"),
+    ("*-annotations.json", "a sidecar"),
+    ("trace*.jsonl", "a decision trace (holds every segment's source text verbatim)"),
+]
+
+
+def pattern_check() -> int:
+    """Filename-pattern guard, for when no book is available to diff against.
+
+    Weaker than the content check but runnable anywhere — CI has no book, and
+    never should. The content check stays the local pre-push tool; this catches
+    the mistake that actually happens, which is `git add -f` on an artifact.
+    """
+    import fnmatch
+
+    offenders: list[tuple[str, str]] = []
+    for path in tracked_files():
+        for pattern, what in FORBIDDEN:
+            if fnmatch.fnmatch(path.name, pattern):
+                offenders.append((str(path), what))
+                break
+
+    print("pattern check (no book supplied — filenames only)\n")
+    for path, what in offenders:
+        print(f"  [FAIL] {path}  looks like {what}")
+    if offenders:
+        print(f"\n  FAIL: {len(offenders)} tracked file(s) look like book content.")
+        print("  Book text must never enter git history — it cannot be removed later.")
+        return 1
+    print(f"  PASS: none of the {len(tracked_files())} tracked files match a "
+          f"book-content pattern.")
+    print("  For the stronger content-based check, pass the book: "
+          "check_no_book_content.py book.epub")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("epub", type=Path, help="the book to check against")
+    parser.add_argument(
+        "epub",
+        type=Path,
+        nargs="?",
+        help="book to diff tracked files against; omit for the pattern-only check "
+             "that CI can run, since CI has no book and never should",
+    )
     parser.add_argument("--max-chars", type=int, default=2000)
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
+
+    if args.epub is None:
+        return pattern_check()
 
     passages = book_passages(args.epub)
     print(f"checking tracked files against {len(passages):,} passages from {args.epub.name}\n")

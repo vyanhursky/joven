@@ -1,0 +1,119 @@
+name: CI
+
+"on":
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # The matrix exists to check the requires-python floor rather than to look
+    # thorough: pyproject claims >=3.11 but development happened entirely on
+    # 3.13, so 3.11 and 3.12 were an untested assertion until now.
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      # epubcheck is the reference EPUB validator and needs a JVM. Without it the
+      # EPUB-3 validation tests skip themselves, which would quietly hollow out
+      # the part of the suite most likely to catch a real regression.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install epubcheck
+        run: |
+          curl -sSL -o /tmp/epubcheck.zip \
+            https://github.com/w3c/epubcheck/releases/download/v5.1.0/epubcheck-5.1.0.zip
+          unzip -q /tmp/epubcheck.zip -d /opt
+          printf '#!/bin/sh\nexec java -jar /opt/epubcheck-5.1.0/epubcheck.jar "$@"\n' \
+            | sudo tee /usr/local/bin/epubcheck >/dev/null
+          sudo chmod +x /usr/local/bin/epubcheck
+          epubcheck --version
+
+      - name: Install kepubify
+        run: |
+          curl -sSL -o /tmp/kepubify \
+            https://github.com/pgaskin/kepubify/releases/latest/download/kepubify-linux-64bit
+          sudo install -m 0755 /tmp/kepubify /usr/local/bin/kepubify
+          kepubify --version
+
+      - name: Install the package
+        run: pip install -e '.[dev,claude]'
+
+      - name: Lint
+        run: ruff check src tests tools
+
+      - name: Test
+        run: pytest -q
+
+      # Skipped tests are the failure mode that matters here: if epubcheck went
+      # missing, the suite would stay green while no longer checking the output is
+      # a valid EPUB. Counting total skips is too brittle -- the four realbook
+      # tests always skip (they need a book, and a book must never be committed)
+      # and the one ollama test skips too, since no model server runs in CI. So
+      # assert the specific subset that must not skip.
+      - name: Assert the epubcheck tests actually ran
+        run: |
+          out=$(pytest -q -m "epubcheck and not realbook" -rs 2>&1)
+          echo "$out"
+          if echo "$out" | grep -q "skipped"; then
+            echo "::error::epubcheck-dependent tests skipped -- is epubcheck on PATH?"
+            exit 1
+          fi
+
+  guards:
+    # Two checks that have each caught a real bug that survived a careful manual
+    # read of the same files minutes earlier.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - run: pip install -e '.[dev]'
+
+      - name: No book content in the repository
+        # Pattern mode: CI has no book to diff against, and never should. The
+        # stronger content-based check runs locally with the book supplied.
+        run: python tools/check_no_book_content.py
+
+      - name: Documented commands all exist
+        run: python tools/check_docs.py --executable joven
+
+      - name: The skull still renders
+        run: python tools/skull.py --scale 0.80 --width 62
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install build twine
+      - run: python -m build
+      - name: Check the distribution metadata
+        run: twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*

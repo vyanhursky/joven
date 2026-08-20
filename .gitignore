@@ -51,3 +51,6 @@ dist/
 .idea/
 .vscode/
 *.swp
+
+# build artifacts
+dist/
