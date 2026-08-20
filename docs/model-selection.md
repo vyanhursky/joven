@@ -1,4 +1,4 @@
-# Local model selection (M2b)
+# Local model selection
 
 Which local model ships as the default Tier-2 adjudicator. Measured, not guessed.
 

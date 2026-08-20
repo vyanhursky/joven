@@ -230,8 +230,8 @@ Consequences — all of them good:
 - Re-running detection with better settings merges into existing human edits
   instead of clobbering them.
 - The expensive step (LLM) is cached and separable from the cheap step (render).
-- You can produce multiple output variants (popup footnotes / inline brackets /
-  no annotations) from one sidecar.
+- One sidecar produces several outputs: popup footnotes, inline brackets, or a
+  clean unannotated copy.
 - The original file is never at risk.
 
 ---
