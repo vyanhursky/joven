@@ -225,6 +225,6 @@ The **books are not.** That is a separate question, and the distinction matters:
   python tools/check_no_book_content.py path/to/book.epub
   ```
 
-  Docs and tests quote short passages to illustrate the detection problem — about
-  1,500 characters in total, longest single quote 78 characters. The checker fails
-  the build if any tracked file exceeds a threshold.
+  Docs and tests quote short passages to illustrate the detection problem —
+  1,116 characters in total across 8 files, longest single quote 78 characters.
+  The checker fails the build if any tracked file exceeds a threshold.
