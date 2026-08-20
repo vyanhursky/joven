@@ -4,16 +4,16 @@ McCarthy writes unquoted dialogue with a trailing or leading attribution —
 ``Tantos, said the man.`` — and that English scaffolding distorts two different
 measurements:
 
-1. **Language confidence** (:mod:`etx.detect.triage`). ``Tantos, said the man.``
+1. **Language confidence** (:mod:`joven.detect.triage`). ``Tantos, said the man.``
    scores 0.50; the bare ``Tantos`` scores 0.98. Stripping the tag concentrates
    the signal in the words that carry it.
-2. **Source/translation similarity** (:func:`etx.translate.is_normalization`).
+2. **Source/translation similarity** (:func:`joven.translate.is_normalization`).
    The tag is *identical* on both sides — ``Cuatro días, he said.`` against
    ``Four days, he said.`` — so it inflates the ratio with text that was never
    translated, and a real translation gets vetoed as a no-op.
 
 Both needed the same closed set of verbs, so it lives here rather than in either
-caller. Keeping it out of :mod:`etx.detect.triage` also means the translator no
+caller. Keeping it out of :mod:`joven.detect.triage` also means the translator no
 longer drags ``lingua`` into every import.
 """
 

@@ -12,7 +12,7 @@ subscription does not include API access (the API bills separately, as prepaid
 credits), and no spend is planned for this project. It is kept because the seam is
 free to maintain — ``anthropic`` is an optional dependency imported lazily, so
 nothing in the default path touches it — and because the caching analysis behind it
-(:mod:`etx.pricing`) is the reusable part. Its tests run against a fake client, so
+(:mod:`joven.pricing`) is the reusable part. Its tests run against a fake client, so
 it cannot silently rot.
 """
 
@@ -486,7 +486,7 @@ def get_translator(backend: str, model: str = DEFAULT_MODEL) -> Translator:
 # They serve two purposes at once, which is the whole reason the paid path has
 # its own set. They teach the four error classes the local model got wrong; and
 # they push the cached prefix past the model's minimum cacheable length, so the
-# *larger* prompt is also the *cheaper* one (see :mod:`etx.pricing`). Kept off
+# *larger* prompt is also the *cheaper* one (see :mod:`joven.pricing`). Kept off
 # the Ollama path because an 8B model degrades with a prompt this long.
 CLAUDE_EXTRA_FEWSHOT: list[tuple[str, dict]] = [
     # Cognates. A translation that looks like the source still tells the reader

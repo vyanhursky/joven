@@ -1,4 +1,4 @@
-"""``etx`` command line interface."""
+"""``joven`` command line interface."""
 
 from __future__ import annotations
 
@@ -261,7 +261,7 @@ def detect(
             translator.max_cost_usd = max_cost
             typer.secho(
                 f"paid backend: {translator.name}, hard cap ${max_cost:.2f}\n"
-                f"  run 'etx estimate' first if you have not costed this book",
+                f"  run 'joven estimate' first if you have not costed this book",
                 fg=typer.colors.YELLOW,
             )
 
@@ -350,7 +350,7 @@ def explain(
 
     Answers "why is this line not annotated?" directly:
 
-        etx explain trace.jsonl --find "Escuchame"
+        joven explain trace.jsonl --find "Escuchame"
     """
     decisions = load_trace(trace)
     if find:

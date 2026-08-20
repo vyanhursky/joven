@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 from lxml import etree
 
-from etx.epub.document import XHTML_NS, document_text, parse, serialize, text_of
-from etx.model import Annotation
-from etx.render.annotate import (
+from joven.epub.document import XHTML_NS, document_text, parse, serialize, text_of
+from joven.model import Annotation
+from joven.render.annotate import (
     FootnoteRenderer,
     InlineRenderer,
     RenderError,
@@ -29,7 +29,7 @@ def _html(body: str) -> bytes:
 
 def _marker() -> etree._Element:
     el = etree.Element(f"{{{XHTML_NS}}}a")
-    el.set("data-etx", "marker")
+    el.set("data-joven", "marker")
     el.text = "*"
     return el
 
@@ -57,7 +57,7 @@ def test_insertion_past_end_appends() -> None:
     root = etree.fromstring(f'<p xmlns="{XHTML_NS}">Se fué.</p>'.encode())
     insert_at_offset(root, 999, _marker())
     assert text_of(root, exclude_inserted=True) == "Se fué."
-    assert root[-1].get("data-etx") == "marker"
+    assert root[-1].get("data-joven") == "marker"
 
 
 def test_insertion_descends_into_child_elements() -> None:
@@ -68,7 +68,7 @@ def test_insertion_descends_into_child_elements() -> None:
     insert_at_offset(root, len("before inn"), _marker())
     assert text_of(root, exclude_inserted=True) == original
     # landed inside the <i>, not as a sibling
-    assert root.find(f"{{{XHTML_NS}}}i")[0].get("data-etx") == "marker"
+    assert root.find(f"{{{XHTML_NS}}}i")[0].get("data-joven") == "marker"
 
 
 def test_insertion_into_child_tail() -> None:
@@ -107,7 +107,7 @@ def test_footnote_renderer_emits_noteref_and_a_separate_note_document() -> None:
 
     out = serialize(tree, original=data).decode()
     assert 'epub:type="noteref"' in out
-    assert "etx-notes/" in out, "marker should link to the note document"
+    assert "joven-notes/" in out, "marker should link to the note document"
     assert "Go with God." not in out, "the note body belongs in its own file"
 
     assert len(engine.new_documents) == 1
@@ -129,12 +129,12 @@ def test_footnote_ids_link_up_across_files() -> None:
     engine = FootnoteRenderer()
     engine.apply(tree, [_annotation("Se fué.", "He is gone.", index=1)])
 
-    ref = next(el for el in tree.getroot().iter() if el.get("data-etx") == "marker")
+    ref = next(el for el in tree.getroot().iter() if el.get("data-joven") == "marker")
     doc_part, _, fragment = ref.get("href").partition("#")
-    assert doc_part.startswith("etx-notes/")
+    assert doc_part.startswith("joven-notes/")
 
     note_root = parse(engine.new_documents[0][1]).getroot()
-    note = next(el for el in note_root.iter() if el.get("data-etx") == "note")
+    note = next(el for el in note_root.iter() if el.get("data-joven") == "note")
     assert note.get("id") == fragment
 
     # the backlink needs a path back, not a bare fragment (epubcheck RSC-012)
@@ -259,7 +259,7 @@ def test_get_renderer_rejects_unknown_style() -> None:
 
 def test_renderer_registry() -> None:
     # Both need EPUB 3: the footnote renderer for epub:type, the inline renderer
-    # for the data-etx marker attribute (HTML5-only).
+    # for the data-joven marker attribute (HTML5-only).
     assert get_renderer("footnote").needs_epub3() is True
     assert get_renderer("inline").needs_epub3() is True
 
@@ -351,7 +351,7 @@ def test_adjacent_placement_with_many_notes_keeps_pairs_together() -> None:
 
 def test_every_variant_builds_and_preserves_text() -> None:
     """Whatever the reader quirk, the prose invariant is non-negotiable."""
-    from etx.render.annotate import VARIANTS, get_renderer
+    from joven.render.annotate import VARIANTS, get_renderer
 
     data = _html("<p>Se fué.</p>\n      <p>English.</p>\n      <p>Está bien.</p>")
     for key in VARIANTS:
@@ -373,7 +373,7 @@ def test_every_variant_builds_and_preserves_text() -> None:
 
 def test_visible_variant_does_not_hide_the_note() -> None:
     """The suspected Kobo fix: no display:none anywhere in the CSS."""
-    from etx.render.annotate import get_renderer
+    from joven.render.annotate import get_renderer
 
     css = get_renderer("A-visible").css()
     assert "display: none" not in css
@@ -381,13 +381,13 @@ def test_visible_variant_does_not_hide_the_note() -> None:
 
 def test_control_variant_reproduces_the_failing_css() -> None:
     """Kept deliberately so the bug can be reproduced on demand."""
-    from etx.render.annotate import get_renderer
+    from joven.render.annotate import get_renderer
 
     assert "display: none" in get_renderer("Z-control-hidden").css()
 
 
 def test_offscreen_variant_keeps_a_layout_box() -> None:
-    from etx.render.annotate import get_renderer
+    from joven.render.annotate import get_renderer
 
     css = get_renderer("B-offscreen").css()
     assert "display: none" not in css
@@ -395,7 +395,7 @@ def test_offscreen_variant_keeps_a_layout_box() -> None:
 
 
 def test_div_variant_emits_div_and_no_backlink() -> None:
-    from etx.render.annotate import get_renderer
+    from joven.render.annotate import get_renderer
 
     data = _html("<p>Se fué.</p>")
     tree = parse(data)
@@ -410,7 +410,7 @@ def test_div_variant_emits_div_and_no_backlink() -> None:
 
 def test_endnotes_variant_drops_noteref_and_collects_at_end() -> None:
     """Plain navigation instead of popup semantics — the reliable fallback."""
-    from etx.render.annotate import get_renderer
+    from joven.render.annotate import get_renderer
 
     data = _html("<p>Se fué.</p><p>English.</p>")
     tree = parse(data)
@@ -423,14 +423,14 @@ def test_endnotes_variant_drops_noteref_and_collects_at_end() -> None:
 
 
 def test_inline_variant_also_needs_epub3() -> None:
-    """Not for the brackets — for the ``data-etx`` marker.
+    """Not for the brackets — for the ``data-joven`` marker.
 
     ``data-*`` is HTML5. EPUB 2's XHTML 1.1 rejects it, so an un-upgraded inline
-    build fails epubcheck with 'attribute "data-etx" not allowed here'. This was
+    build fails epubcheck with 'attribute "data-joven" not allowed here'. This was
     latent from the start and only surfaced once a variant build ran epubcheck on
     inline output.
     """
-    from etx.render.annotate import get_renderer
+    from joven.render.annotate import get_renderer
 
     assert get_renderer("E-inline").needs_epub3() is True
 

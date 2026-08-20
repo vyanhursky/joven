@@ -1,10 +1,20 @@
-# epub-translation-helper (`etx`)
+# Joven — a Cormac McCarthy ebook Spanish annotator
 
-Insert clickable translation footnotes for untranslated foreign-language passages
-in an EPUB, so you can read them on a Kobo without reaching for a phone.
+**Finds the untranslated Spanish in an English novel and inserts tappable
+translation footnotes**, so you can read McCarthy's border trilogy on a Kobo
+without reaching for a phone every other page.
 
-Built for Cormac McCarthy's *The Crossing*, which is mostly English with long
-untranslated stretches of Mexican-border Spanish.
+*The Crossing* is mostly English with long untranslated stretches of
+Mexican-border Spanish — hundreds of lines of dialogue the book never translates
+for you. This annotates them in place, leaving the prose byte-for-byte unchanged.
+
+> ### `Escúchame, joven`
+>
+> — *Listen to me, young man.* It appears nineteen times in the book, and eighteen
+> of this run's footnotes land on a passage containing it. Hence the name.
+
+Everything runs on your machine against a local model: no API key, no per-book
+cost, nothing uploaded.
 
 **Design, measurements, and roadmap: [DESIGN.md](DESIGN.md).**
 **Local model benchmark: [docs/model-selection.md](docs/model-selection.md).**
@@ -43,11 +53,11 @@ ollama pull qwen3:8b
 ## Use
 
 ```bash
-etx inspect book.epub                                    # structure, DRM, word counts
-etx detect  book.epub -o annotations.json --trace trace.jsonl
-etx review  annotations.json --epub book.epub            # triage, suspect passages first
-etx render  book.epub annotations.json -o out/           # EPUB 3 + KEPUB for the Kobo
-etx verify  out/book.annotated.epub --original book.epub
+joven inspect book.epub                                    # structure, DRM, word counts
+joven detect  book.epub -o annotations.json --trace trace.jsonl
+joven review  annotations.json --epub book.epub            # triage, suspect passages first
+joven render  book.epub annotations.json -o out/           # EPUB 3 + KEPUB for the Kobo
+joven verify  out/book.annotated.epub --original book.epub
 ```
 
 `review` opens a local page listing every annotation with the surrounding prose and
@@ -66,16 +76,16 @@ showed quality is uniformly good across every band.
 Missed a passage while reading?
 
 ```bash
-etx add annotations.json --epub book.epub \
+joven add annotations.json --epub book.epub \
   --find "Bueno pues" --translation "Well then"
 ```
 
 Variations worth knowing:
 
 ```bash
-etx detect book.epub --backend none --trace t1.jsonl   # tier 1 only: instant, free
-etx detect book.epub --limit 200                       # scan a slice while iterating
-etx render book.epub annotations.json --style inline    # bracketed text (debug view)
+joven detect book.epub --backend none --trace t1.jsonl   # tier 1 only: instant, free
+joven detect book.epub --limit 200                       # scan a slice while iterating
+joven render book.epub annotations.json --style inline    # bracketed text (debug view)
 ```
 
 ### The paid backend — built, not used
@@ -95,8 +105,8 @@ regionalisms. Costing a run first is free, because Tier 1 is offline and the
 escalation count is what drives the bill:
 
 ```bash
-etx estimate book.epub --model claude-sonnet-5     # ~2s, makes no paid calls
-etx detect book.epub --backend claude --max-cost 2.00
+joven estimate book.epub --model claude-sonnet-5     # ~2s, makes no paid calls
+joven detect book.epub --backend claude --max-cost 2.00
 ```
 
 Measured on this book: **2,556 calls → $1.26 (Sonnet 5, batched)**, and the run
@@ -121,7 +131,7 @@ The levers that are actually available:
 1. **A clean source EPUB.** The dominant error class is scan damage the pipeline
    then faithfully translates (`Está fibre.` → "It's fibre."). A clean copy removes
    it outright — and fixes the body text, which no sidecar edit can.
-2. **The review pass.** `etx review` already surfaces the suspect annotations, and
+2. **The review pass.** `joven review` already surfaces the suspect annotations, and
    every decision is sticky across re-detection.
 3. **A larger local model.** `qwen3:8b` won on the benchmark against the other 8B
    candidates ([docs/model-selection.md](docs/model-selection.md)); a larger model
@@ -134,8 +144,8 @@ Never guess — ask the trace. Every segment gets a record whether or not it bec
 a footnote:
 
 ```bash
-etx explain trace.jsonl --find "Yo no sé nada"
-etx explain trace.jsonl --outcome tier2_rejected      # everything the LLM dropped
+joven explain trace.jsonl --find "Yo no sé nada"
+joven explain trace.jsonl --outcome tier2_rejected      # everything the LLM dropped
 jq -c 'select(.outcome=="escalated") | [.tier1_confidence, .text]' trace.jsonl | sort
 ```
 
@@ -163,7 +173,7 @@ the Kobo imports it.
 ./.venv/bin/ruff check src tests tools
 
 # opt in to the real-book tests (the book is never committed)
-ETX_TEST_EPUB=/path/to/book.epub ./.venv/bin/pytest
+JOVEN_TEST_EPUB=/path/to/book.epub ./.venv/bin/pytest
 ```
 
 Tests never hit the network. Model benchmarks are separate tools, not tests:

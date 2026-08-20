@@ -1,17 +1,17 @@
 """XHTML parsing, text extraction, and the text-preservation invariant.
 
-Every element this tool inserts carries a ``data-etx`` attribute. That marker is
+Every element this tool inserts carries a ``data-joven`` attribute. That marker is
 what makes the core invariant checkable: strip the inserted nodes back out and
 the remaining text must be *byte-identical* to the original. Matching on an
 explicit attribute rather than on class names keeps that check unambiguous.
 
 Two marker kinds, because they differ in how their tail text is treated:
 
-``data-etx="marker"``
+``data-joven="marker"``
     An inline noteref spliced into the middle of a paragraph. Its ``tail`` is
     original prose that followed the split point, so the tail is **kept**.
 
-``data-etx="note"``
+``data-joven="note"``
     A whole ``<aside>`` footnote body appended to the document. Both the element
     and its ``tail`` are ours, so the tail is **dropped**.
 """
@@ -26,7 +26,7 @@ from lxml import etree
 
 XHTML_NS = "http://www.w3.org/1999/xhtml"
 EPUB_NS = "http://www.idpf.org/2007/ops"
-ETX_ATTR = "data-etx"
+JOVEN_ATTR = "data-joven"
 
 # The XML declaration and any newline that follows it, captured verbatim so the
 # output matches the input's style byte for byte. `[^>]*` is safe: a declaration
@@ -89,8 +89,8 @@ def serialize(tree: etree._ElementTree, *, original: bytes | None = None) -> byt
 
 
 def _is_inserted(el: etree._Element) -> str | None:
-    """Return the ``data-etx`` kind for an element, or None if not ours."""
-    return el.get(ETX_ATTR)
+    """Return the ``data-joven`` kind for an element, or None if not ours."""
+    return el.get(JOVEN_ATTR)
 
 
 def text_of(el: etree._Element, *, exclude_inserted: bool = True) -> str:

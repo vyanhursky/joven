@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from etx.translate import StubTranslator, get_translator, is_normalization
+from joven.translate import StubTranslator, get_translator, is_normalization
 
 
 @pytest.mark.parametrize(
@@ -126,7 +126,7 @@ def test_context_is_delimited_and_marked_do_not_translate() -> None:
     ``Ay. Ándale, joven.`` produced ``He went away. Come on, young man.``, i.e. a
     translation of the context. The prompt now hard-delimits the two.
     """
-    from etx.translate import OllamaTranslator
+    from joven.translate import OllamaTranslator
 
     messages = OllamaTranslator()._messages("Está bien.", "Where is the sun? Se fué.")
     user = messages[-1]["content"]
@@ -138,7 +138,7 @@ def test_context_is_delimited_and_marked_do_not_translate() -> None:
 
 
 def test_no_context_means_no_delimiters() -> None:
-    from etx.translate import OllamaTranslator
+    from joven.translate import OllamaTranslator
 
     user = OllamaTranslator()._messages("Está bien.", "")[-1]["content"]
     assert user == "Está bien."
@@ -147,7 +147,7 @@ def test_no_context_means_no_delimiters() -> None:
 @pytest.mark.ollama
 def test_live_model_does_not_bleed_context(request: pytest.FixtureRequest) -> None:
     """End-to-end guard, skipped unless ollama is up. Cases avoid the few-shots."""
-    from etx.translate import DEFAULT_MODEL, OllamaTranslator, installed_models, ollama_available
+    from joven.translate import DEFAULT_MODEL, OllamaTranslator, installed_models, ollama_available
 
     if not ollama_available() or DEFAULT_MODEL not in installed_models():
         pytest.skip("ollama or the default model is unavailable")

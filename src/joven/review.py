@@ -13,7 +13,7 @@ the reasoning that the detector's own uncertainty is the best available predicto
 of error. The first full-book run showed it is not a predictor at all — quality
 was uniformly good across every confidence band, because confidence measures how
 hard the *language call* was, not whether the translation is right. What does
-predict errors is :mod:`etx.suspicion`, so those sort to the top and carry a badge
+predict errors is :mod:`joven.suspicion`, so those sort to the top and carry a badge
 saying why; everything else follows in narrative order, where a translation that
 is wrong *for the scene* is easiest to spot. Stop whenever you like — the flagged
 ones are done first.
@@ -21,7 +21,7 @@ ones are done first.
 **Writes straight to the sidecar.** Every decision is saved immediately, so
 closing the tab never loses work, and re-rendering picks the edits up with no
 export step. Human statuses are sticky across re-detection
-(:meth:`etx.model.Sidecar.merge`), so reviewing is never wasted.
+(:meth:`joven.model.Sidecar.merge`), so reviewing is never wasted.
 
 **Local, dependency-free, offline.** ``http.server`` and one self-contained page.
 The book text never leaves the machine.
@@ -62,7 +62,7 @@ class ReviewState:
         errors are. The first full-book run disproved it: detector confidence
         measures how hard the *language call* was, not whether the translation is
         right, and sampling every band showed uniformly good quality. See
-        :mod:`etx.suspicion` for what does predict errors.
+        :mod:`joven.suspicion` for what does predict errors.
 
         Book order for the remainder is not just a fallback — reading in narrative
         sequence is how you notice a translation that is fine alone but wrong for
@@ -254,7 +254,7 @@ PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>etx review</title>
+<title>joven review</title>
 <style>
   :root {
     --bg: #faf9f7; --fg: #1c1a17; --muted: #6b6560; --line: #e0dcd6;
@@ -311,7 +311,7 @@ PAGE = """<!doctype html>
 </head>
 <body>
 <header>
-  <h1>etx review</h1>
+  <h1>joven review</h1>
   <div class="bar"><i id="bar" style="width:0%"></i></div>
   <div class="counts" id="counts">loading…</div>
   <label class="counts"><input type="checkbox" id="hide"/> hide reviewed</label>

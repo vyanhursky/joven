@@ -14,7 +14,7 @@ sys.path.insert(0, "tools")
 import httpx  # noqa: E402
 from bench_models import CASES, ask  # noqa: E402
 
-from etx.detect.triage import Triager, Verdict  # noqa: E402
+from joven.detect.triage import Triager, Verdict  # noqa: E402
 
 
 def main() -> None:

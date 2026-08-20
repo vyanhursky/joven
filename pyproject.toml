@@ -1,5 +1,5 @@
 [project]
-name = "epub-translation-helper"
+name = "joven-ebook-annotator"
 version = "0.1.0"
 description = "Insert clickable translation footnotes for foreign-language passages in an EPUB"
 readme = "README.md"
@@ -33,7 +33,7 @@ dev = ["pytest>=8.0", "ruff>=0.5"]
 claude = ["anthropic>=0.122"]
 
 [project.scripts]
-etx = "etx.cli:app"
+joven = "joven.cli:app"
 
 [build-system]
 requires = ["setuptools>=77"]
@@ -46,7 +46,7 @@ where = ["src"]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
 markers = [
-    "realbook: needs ETX_TEST_EPUB pointing at a real EPUB (opt-in)",
+    "realbook: needs JOVEN_TEST_EPUB pointing at a real EPUB (opt-in)",
     "epubcheck: needs the epubcheck binary on PATH",
     "ollama: needs a running ollama server",
 ]
@@ -60,4 +60,4 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
 # typer's entire API is function calls in argument defaults
-"src/etx/cli.py" = ["B008"]
+"src/joven/cli.py" = ["B008"]

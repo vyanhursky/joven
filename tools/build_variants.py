@@ -20,10 +20,10 @@ import argparse
 import shutil
 from pathlib import Path
 
-from etx.model import Sidecar
-from etx.render import render_epub
-from etx.render.annotate import VARIANTS
-from etx.verify import verify
+from joven.model import Sidecar
+from joven.render import render_epub
+from joven.render.annotate import VARIANTS
+from joven.verify import verify
 
 KOBO = Path("/Volumes/KOBOeReader")
 
@@ -87,14 +87,14 @@ def main() -> None:
 
     print("\ninstalling to the Kobo:")
     # Remove anything we put there previously so the test set is unambiguous.
-    for stale in list(KOBO.glob("*etx*.kepub.epub")) + list(KOBO.glob("._*etx*")):
+    for stale in list(KOBO.glob("*joven*.kepub.epub")) + list(KOBO.glob("._*joven*")):
         stale.unlink()
         print(f"  removed  {stale.name}")
 
     for index, (key, path, ok) in enumerate(built, start=1):
         # Numbered so they sort into test order in the Kobo library, and named so
         # you always know which build you are looking at.
-        dest = KOBO / f"etx {index} {key}.kepub.epub"
+        dest = KOBO / f"joven {index} {key}.kepub.epub"
         shutil.copy2(path, dest)
         print(f"  copied   {dest.name}{'' if ok else '   (verify FAILED)'}")
 

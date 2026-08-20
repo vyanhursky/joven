@@ -19,15 +19,15 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from etx.detect.triage import is_embedded_loanword
-from etx.trace import Outcome
-from etx.translate import is_normalization
+from joven.detect.triage import is_embedded_loanword
+from joven.trace import Outcome
+from joven.translate import is_normalization
 
 
 def replay(record: dict) -> str:
     """The outcome today's gates would produce for an escalated segment.
 
-    Mirrors the post-model half of :func:`etx.detect.pipeline.detect`. Segments the
+    Mirrors the post-model half of :func:`joven.detect.pipeline.detect`. Segments the
     model never saw are returned unchanged — nothing here can affect them.
     """
     if not record.get("tier2_used"):

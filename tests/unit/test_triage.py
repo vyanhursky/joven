@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from etx.detect.triage import Triager, Verdict, strip_dialogue_tags
+from joven.detect.triage import Triager, Verdict, strip_dialogue_tags
 
 
 @pytest.fixture(scope="module")
@@ -162,7 +162,7 @@ def test_result_reports_word_count(triager: Triager) -> None:
 )
 def test_lone_spanish_word_in_english_prose_is_rejected(segment: str, span: str) -> None:
     """Confirmed policy: no footnote for a single loanword inside English."""
-    from etx.detect.triage import is_embedded_loanword
+    from joven.detect.triage import is_embedded_loanword
 
     assert is_embedded_loanword(segment, span), segment
 
@@ -186,7 +186,7 @@ def test_lone_spanish_word_in_english_prose_is_rejected(segment: str, span: str)
 )
 def test_spanish_utterances_are_kept(segment: str, span: str) -> None:
     """The rule must not confuse a dialogue tag with surrounding English prose."""
-    from etx.detect.triage import is_embedded_loanword
+    from joven.detect.triage import is_embedded_loanword
 
     assert not is_embedded_loanword(segment, span), segment
 
@@ -216,7 +216,7 @@ def test_spanish_utterances_are_kept(segment: str, span: str) -> None:
     ],
 )
 def test_multiword_spanish_is_never_a_loanword(segment: str, span: str) -> None:
-    from etx.detect.triage import is_embedded_loanword
+    from joven.detect.triage import is_embedded_loanword
 
     assert not is_embedded_loanword(segment, span), segment
 
@@ -227,20 +227,20 @@ def test_ratio_alone_would_get_these_wrong() -> None:
     Both spans are 1 word of 4-5, so any fraction-based rule gives them the same
     answer — but the correct answers are opposite.
     """
-    from etx.detect.triage import is_embedded_loanword
+    from joven.detect.triage import is_embedded_loanword
 
     assert not is_embedded_loanword("Bastante, the doctor said.", "Bastante")
     assert is_embedded_loanword("You know what is orgullo?", "orgullo")
 
 
 def test_empty_span_is_not_a_loanword() -> None:
-    from etx.detect.triage import is_embedded_loanword
+    from joven.detect.triage import is_embedded_loanword
 
     assert not is_embedded_loanword("Some English text.", "")
 
 
 def test_loanword_threshold_is_tunable() -> None:
-    from etx.detect.triage import is_embedded_loanword
+    from joven.detect.triage import is_embedded_loanword
 
     seg, span = "Muy bien amigo", "amigo"
     assert is_embedded_loanword(seg, span, max_outside_words=1)

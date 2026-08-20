@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from etx.model import Annotation, Sidecar, Status, annotation_id, normalize
+from joven.model import Annotation, Sidecar, Status, annotation_id, normalize
 
 
 def _ann(text: str = "Se fué.", *, index: int = 1, translation: str = "He is gone.", **kw):
@@ -229,20 +229,20 @@ def test_non_ascii_survives_json(tmp_path: Path) -> None:
 
 
 def test_occurrence_indices_numbers_repeats() -> None:
-    from etx.model import occurrence_indices
+    from joven.model import occurrence_indices
 
     assert occurrence_indices(["Sí.", "No.", "Sí.", "Sí."]) == [0, 0, 1, 2]
 
 
 def test_occurrence_indices_ignores_whitespace_variation() -> None:
-    from etx.model import occurrence_indices
+    from joven.model import occurrence_indices
 
     assert occurrence_indices(["Sí.", " Sí. ", "Sí.\n"]) == [0, 1, 2]
 
 
 def test_repeated_paragraphs_get_distinct_ids() -> None:
     """The 245-collision bug: repeated dialogue must not collapse to one id."""
-    from etx.model import occurrence_indices
+    from joven.model import occurrence_indices
 
     texts = ["Yessir."] * 3
     ids = {
@@ -254,7 +254,7 @@ def test_repeated_paragraphs_get_distinct_ids() -> None:
 
 def test_merge_keeps_all_repeated_paragraphs() -> None:
     """Without occurrence numbering this silently kept 1 of 3."""
-    from etx.model import occurrence_indices
+    from joven.model import occurrence_indices
 
     texts = ["Sí."] * 3
     incoming = [

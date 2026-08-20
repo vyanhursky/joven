@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from etx.epub.archive import EpubArchive
-from etx.epub.package import read_package
-from etx.kepub import kepub_name, kepubify, kepubify_available
-from etx.verify import (
+from joven.epub.archive import EpubArchive
+from joven.epub.package import read_package
+from joven.kepub import kepub_name, kepubify, kepubify_available
+from joven.verify import (
     check_epubcheck,
     check_kepub_naming,
     check_mimetype_first,
@@ -117,7 +117,7 @@ def test_kepubify_preserves_prose(sample_epub: Path, tmp_path: Path) -> None:
 
     kepub_archive = EpubArchive.read(kepubify(staged, tmp_path / "out"))
 
-    from etx.epub.document import document_text
+    from joven.epub.document import document_text
 
     for href in original.xhtml_names():
         before = "".join(document_text(original.get(href)).split())

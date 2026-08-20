@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from etx.epub.archive import EpubArchive, EpubError
+from joven.epub.archive import EpubArchive, EpubError
 
 
 def test_reads_all_entries(sample_epub: Path) -> None:

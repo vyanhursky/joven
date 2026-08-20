@@ -19,7 +19,7 @@ from pathlib import Path
 from lxml import etree
 
 from .epub.archive import MIMETYPE_NAME, EpubArchive
-from .epub.document import ETX_ATTR, XHTML_NS, document_text, parse, text_of
+from .epub.document import JOVEN_ATTR, XHTML_NS, document_text, parse, text_of
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,14 +170,14 @@ def check_kobo_popup_conditions(produced: EpubArchive) -> Finding:
         notes = {
             note_id: text
             for el in root.iter()
-            if isinstance(el.tag, str) and el.get(ETX_ATTR) == "note"
+            if isinstance(el.tag, str) and el.get(JOVEN_ATTR) == "note"
             for note_id, text in [(_note_id_of(el), text_of(el, exclude_inserted=False))]
             if note_id
         }
         body = raw.decode("utf-8", errors="replace")
 
         for el in root.iter(f"{{{XHTML_NS}}}a"):
-            if el.get(ETX_ATTR) != "marker":
+            if el.get(JOVEN_ATTR) != "marker":
                 continue
             doc_part, _, fragment = (el.get("href") or "").partition("#")
             if doc_part:
@@ -225,7 +225,7 @@ def _note_id_of(note: etree._Element) -> str | None:
 
     The ``<span>`` variant follows Kobo's own spec example and puts ``id`` +
     ``epub:type`` on an inline span inside an unmarked block wrapper, so the id is
-    not always on the element carrying ``data-etx="note"``.
+    not always on the element carrying ``data-joven="note"``.
     """
     if note.get("id"):
         return note.get("id")
@@ -248,7 +248,7 @@ def check_noterefs_resolve(produced: EpubArchive) -> Finding:
         note_ids: list[str] = [
             note_id
             for el in root.iter()
-            if isinstance(el.tag, str) and el.get(ETX_ATTR) == "note"
+            if isinstance(el.tag, str) and el.get(JOVEN_ATTR) == "note"
             for note_id in [_note_id_of(el)]
             if note_id
         ]
@@ -257,7 +257,7 @@ def check_noterefs_resolve(produced: EpubArchive) -> Finding:
             problems.append(f"{href}: duplicate footnote ids {sorted(dupes)}")
 
         for el in root.iter(f"{{{XHTML_NS}}}a"):
-            if el.get(ETX_ATTR) != "marker":
+            if el.get(JOVEN_ATTR) != "marker":
                 continue
             total += 1
             raw_href = el.get("href") or ""

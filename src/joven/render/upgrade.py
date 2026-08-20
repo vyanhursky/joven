@@ -32,7 +32,7 @@ NAV_FILENAME = "nav.xhtml"
 # The footnote CSS is no longer a constant: how the note is hidden turned out to
 # be reader-dependent (a display:none target has no position for Kobo to navigate
 # to), so each renderer supplies its own rules via ``Renderer.css()``.
-ETX_CSS_MARKER = "etx-note"
+JOVEN_CSS_MARKER = "joven-note"
 
 
 def _timestamp() -> str:
@@ -321,7 +321,7 @@ def upgrade_package(archive: EpubArchive, package: Package) -> bool:
         if nav_archive_path not in archive:
             archive.add(nav_archive_path, build_nav(archive, package), after=package.opf_path)
         item = etree.SubElement(manifest, f"{{{OPF_NS}}}item")
-        item.set("id", "etx-nav")
+        item.set("id", "joven-nav")
         item.set("href", NAV_FILENAME)
         item.set("media-type", "application/xhtml+xml")
         item.set("properties", "nav")
@@ -373,7 +373,7 @@ def register_stylesheet(archive: EpubArchive, package: Package, css: str) -> str
         return None
     target = css_paths[0]
     current = archive.get(target)
-    if ETX_CSS_MARKER.encode() in current:
+    if JOVEN_CSS_MARKER.encode() in current:
         return target  # already applied
     archive.replace(target, current.rstrip() + b"\n" + css.encode())
     return target
@@ -419,7 +419,7 @@ def register_documents(
         href = posixpath.relpath(archive_path, opf_base) if opf_base else archive_path
         if href in existing:
             continue
-        item_id = f"etx-note-{index}"
+        item_id = f"joven-note-{index}"
         item = etree.SubElement(manifest, f"{{{OPF_NS}}}item")
         item.set("id", item_id)
         item.set("href", href)

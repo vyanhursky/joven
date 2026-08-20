@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from etx.detect.pipeline import _narrow
-from etx.detect.segment import segment
+from joven.detect.pipeline import _narrow
+from joven.detect.segment import segment
 
 
 def _seg(paragraph: str, index: int = 0):

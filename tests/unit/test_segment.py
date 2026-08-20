@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from etx.detect.segment import merge_adjacent, segment
+from joven.detect.segment import merge_adjacent, segment
 
 
 def test_offsets_are_exact() -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from etx.epub.document import document_text, iter_text_units, parse, serialize
+from joven.epub.document import document_text, iter_text_units, parse, serialize
 
 XML_DECL = "<?xml version='1.0' encoding='utf-8'?>"
 
@@ -26,7 +26,7 @@ def test_marker_excluded_but_its_tail_kept() -> None:
     original = _html('<p>Cuántos años tienes? the old man said.</p>')
     annotated = _html(
         '<p>Cuántos años tienes?'
-        '<a data-etx="marker" href="#n1" id="r1">*</a>'
+        '<a data-joven="marker" href="#n1" id="r1">*</a>'
         " the old man said.</p>"
     )
     assert document_text(annotated, exclude_inserted=True) == document_text(
@@ -37,8 +37,8 @@ def test_marker_excluded_but_its_tail_kept() -> None:
 def test_note_body_and_its_tail_both_excluded() -> None:
     original = _html("<p>Se fué.</p>")
     annotated = _html(
-        '<p>Se fué.<a data-etx="marker" href="#n1" id="r1">*</a></p>'
-        '<aside data-etx="note" id="n1"><p>He is gone.</p></aside>\n'
+        '<p>Se fué.<a data-joven="marker" href="#n1" id="r1">*</a></p>'
+        '<aside data-joven="note" id="n1"><p>He is gone.</p></aside>\n'
     )
     assert document_text(annotated, exclude_inserted=True) == document_text(
         original, exclude_inserted=False
@@ -52,8 +52,8 @@ def test_multi_span_paragraph_roundtrips() -> None:
     )
     annotated = _html(
         "<p>Escúchame, joven, he said. Yo no sé nada. Esto es la verdad."
-        '<a data-etx="marker" href="#n2" id="r2">*</a></p>'
-        '<aside data-etx="note" id="n2"><p>Listen to me, young man...</p></aside>'
+        '<a data-joven="marker" href="#n2" id="r2">*</a></p>'
+        '<aside data-joven="note" id="n2"><p>Listen to me, young man...</p></aside>'
     )
     assert document_text(annotated, exclude_inserted=True) == document_text(
         original, exclude_inserted=False
@@ -61,7 +61,7 @@ def test_multi_span_paragraph_roundtrips() -> None:
 
 
 def test_exclude_inserted_false_includes_our_nodes() -> None:
-    annotated = _html('<p>Hola<a data-etx="marker" href="#n1">*</a></p>')
+    annotated = _html('<p>Hola<a data-joven="marker" href="#n1">*</a></p>')
     assert "*" in document_text(annotated, exclude_inserted=False)
     assert "*" not in document_text(annotated, exclude_inserted=True)
 
@@ -93,7 +93,7 @@ def test_serialize_preserves_single_quoted_xml_declaration() -> None:
 
 
 def test_serialize_roundtrip_preserves_text(sample_epub) -> None:
-    from etx.epub.archive import EpubArchive
+    from joven.epub.archive import EpubArchive
 
     archive = EpubArchive.read(sample_epub)
     for href in archive.xhtml_names():

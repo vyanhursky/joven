@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from etx.epub.archive import EpubArchive
-from etx.model import Annotation, Sidecar
-from etx.render import render_epub
-from etx.verify import check_kobo_popup_conditions, check_noterefs_resolve
+from joven.epub.archive import EpubArchive
+from joven.model import Annotation, Sidecar
+from joven.render import render_epub
+from joven.verify import check_kobo_popup_conditions, check_noterefs_resolve
 
 
 def _sidecar() -> Sidecar:
@@ -30,7 +30,7 @@ def _sidecar() -> Sidecar:
 
 def test_kobo_conditions_hold_for_every_variant(sample_epub: Path, tmp_path: Path) -> None:
     """The forward-reference and length conditions from Kobo's published spec."""
-    from etx.render.annotate import VARIANTS
+    from joven.render.annotate import VARIANTS
 
     for key in VARIANTS:
         result = render_epub(
@@ -43,7 +43,7 @@ def test_kobo_conditions_hold_for_every_variant(sample_epub: Path, tmp_path: Pat
 
 def test_noterefs_resolve_for_every_variant(sample_epub: Path, tmp_path: Path) -> None:
     """Includes the <span> variant, where the id sits on a child of the note."""
-    from etx.render.annotate import VARIANTS
+    from joven.render.annotate import VARIANTS
 
     for key in VARIANTS:
         result = render_epub(
@@ -62,7 +62,7 @@ def test_one_note_per_file_creates_isolated_documents(sample_epub: Path, tmp_pat
     produced = EpubArchive.read(result.epub_path)
     for path in result.note_documents:
         body = produced.get(path).decode()
-        assert body.count('data-etx="note"') == 1, f"{path} holds more than one note"
+        assert body.count('data-joven="note"') == 1, f"{path} holds more than one note"
 
 
 def test_note_documents_are_non_linear_spine_items(sample_epub: Path, tmp_path: Path) -> None:

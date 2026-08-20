@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import pytest
 
-from etx import pricing
-from etx.estimate import _prefix_text
-from etx.translate import (
+from joven import pricing
+from joven.estimate import _prefix_text
+from joven.translate import (
     FEWSHOT,
     STRICT_SCHEMA,
     SYSTEM_PROMPT,

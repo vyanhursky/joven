@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from etx.suspicion import carried_through, garbled_tokens, suspicions
+from joven.suspicion import carried_through, garbled_tokens, suspicions
 
 
 @pytest.mark.parametrize(

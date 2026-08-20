@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from etx.model import Annotation, Sidecar, Status
-from etx.review import ReviewState, _payload, _segments, build_context
+from joven.model import Annotation, Sidecar, Status
+from joven.review import ReviewState, _payload, _segments, build_context
 
 
 def _ann(text: str, translation: str, *, conf: float, index: int) -> Annotation:

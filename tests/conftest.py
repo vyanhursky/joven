@@ -141,13 +141,13 @@ def drm_epub(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def real_epub() -> Path:
-    """The actual target book, opt-in via ETX_TEST_EPUB (never committed)."""
-    raw = os.environ.get("ETX_TEST_EPUB")
+    """The actual target book, opt-in via JOVEN_TEST_EPUB (never committed)."""
+    raw = os.environ.get("JOVEN_TEST_EPUB")
     if not raw:
-        pytest.skip("set ETX_TEST_EPUB to run tests against the real book")
+        pytest.skip("set JOVEN_TEST_EPUB to run tests against the real book")
     path = Path(raw)
     if not path.is_file():
-        pytest.skip(f"ETX_TEST_EPUB does not point at a file: {path}")
+        pytest.skip(f"JOVEN_TEST_EPUB does not point at a file: {path}")
     return path
 
 
@@ -175,7 +175,7 @@ def find_spanish_units(
     The real-book tests used to hardcode their targets — one by Calibre filename
     (``part2_split_000``), one by exact phrase (``"Se fué."``). Both are properties
     of one *edition* of one *book*, but the fixture's contract is "whatever EPUB
-    ``ETX_TEST_EPUB`` points at". So the filename lookup died with StopIteration on
+    ``JOVEN_TEST_EPUB`` points at". So the filename lookup died with StopIteration on
     a differently-produced edition of the same novel, and the phrase lookup only
     survived because those words happen to appear in both — it would raise KeyError
     on any other book.
@@ -183,7 +183,7 @@ def find_spanish_units(
     Deriving the targets instead makes the gate mean what it claims: this pipeline
     works on a real publisher's EPUB, whichever one you hand it.
     """
-    from etx.epub.document import iter_text_units
+    from joven.epub.document import iter_text_units
 
     found: list[tuple[str, int, str, tuple[int, int]]] = []
     for href in package.spine_hrefs:
@@ -211,8 +211,8 @@ def spanish_units(real_epub: Path):
     Skips rather than fails when a book has none — that is a property of the book,
     not a defect in the code being tested.
     """
-    from etx.epub.archive import EpubArchive
-    from etx.epub.package import read_package
+    from joven.epub.archive import EpubArchive
+    from joven.epub.package import read_package
 
     archive = EpubArchive.read(real_epub)
     units = find_spanish_units(archive, read_package(archive))

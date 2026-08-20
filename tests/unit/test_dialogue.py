@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from etx.dialogue import strip_dialogue_tags, word_count
+from joven.dialogue import strip_dialogue_tags, word_count
 
 
 @pytest.mark.parametrize(

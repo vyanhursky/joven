@@ -1,4 +1,4 @@
-# epub-translation-helper — Design & Implementation Plan
+# Joven — Design & Implementation Plan
 
 Insert clickable translation footnotes for foreign-language passages in an EPUB.
 v1 scope: **EPUB input, Spanish→English, Cormac McCarthy's *The Crossing*.**
@@ -7,14 +7,14 @@ v1 scope: **EPUB input, Spanish→English, Cormac McCarthy's *The Crossing*.**
 
 | Milestone | State |
 |---|---|
-| M0 — Skeleton, CLI, `etx inspect` | ✅ done |
+| M0 — Skeleton, CLI, `joven inspect` | ✅ done |
 | M1 — Lossless round-trip + `epubcheck` + text invariant | ✅ done, green on the real book |
 | M2b — Local model selection | ✅ done → [`docs/model-selection.md`](docs/model-selection.md) |
 | M2 — Detection & triage (Tier 1) | ✅ segmentation + triage over the full book |
 | M3 — Rendering + EPUB 2→3 + KEPUB | ✅ **done and device-verified** — see §6.6b |
 | M4 — Local LLM adjudication at book scale | ✅ **full book run** — 12,302 segments, 2,556 LLM calls, 726 footnotes, 73 min, $0 |
-| **Decision trace** (`--trace` / `etx explain`) | ✅ added — see §6.7 |
-| M5 — Review & corrections | ✅ `etx review` (local UI) + `etx add`; round-trip verified |
+| **Decision trace** (`--trace` / `joven explain`) | ✅ added — see §6.7 |
+| M5 — Review & corrections | ✅ `joven review` (local UI) + `joven add`; round-trip verified |
 | M6 — Read the book | ✅ annotated KEPUB on the device, 11 of 11 integrity checks green |
 
 The first full-book run paid for itself by exposing two false-suppression bugs
@@ -280,11 +280,11 @@ a copyrighted book to a server is exactly what you don't want.
 **But** the correction workflow genuinely wants a UI. So:
 
 ```bash
-etx inspect  book.epub                    # report: structure, version, DRM, stats
-etx detect   book.epub -o annotations.json    # triage + LLM, writes sidecar
-etx review   annotations.json                 # localhost review UI (or --html report)
-etx render   book.epub annotations.json -o book.annotated.epub
-etx verify   book.annotated.epub              # epubcheck + text-preservation proof
+joven inspect  book.epub                    # report: structure, version, DRM, stats
+joven detect   book.epub -o annotations.json    # triage + LLM, writes sidecar
+joven review   annotations.json                 # localhost review UI (or --html report)
+joven render   book.epub annotations.json -o book.annotated.epub
+joven verify   book.annotated.epub              # epubcheck + text-preservation proof
 ```
 
 `detect` and `render` are separate commands on purpose — that separation *is* the
@@ -347,8 +347,8 @@ ArgosTranslator    # optional, translation-only comparison baseline
 ```
 
 ```bash
-etx detect book.epub                      # local model, free
-etx detect book.epub --backend claude     # future, opt-in only
+joven detect book.epub                      # local model, free
+joven detect book.epub --backend claude     # future, opt-in only
 ```
 
 Because the sidecar is the durable artifact (§3.1), you can start with the local
@@ -365,10 +365,10 @@ popup semantics:
 ```xhtml
 <!-- Marker: anchored at the END of the Spanish span, before the English tag -->
 <p class="calibre4">Cuántos años tienes?<a epub:type="noteref"
-   href="#etx-a3f9c21b" id="etx-ref-a3f9c21b" class="etx-note">*</a> the old man said.</p>
+   href="#joven-a3f9c21b" id="joven-ref-a3f9c21b" class="joven-note">*</a> the old man said.</p>
 
 <!-- Note body: aside is hidden from the reading flow by conforming readers -->
-<aside epub:type="footnote" id="etx-a3f9c21b" class="etx-footnote">
+<aside epub:type="footnote" id="joven-a3f9c21b" class="joven-footnote">
   <p>How old are you?</p>
 </aside>
 ```
@@ -381,7 +381,7 @@ Package changes required (isolated, tested transform):
 | new `nav.xhtml` | EPUB 3 nav document (`epub:type="toc"`), generated from the existing `toc.ncx` |
 | `toc.ncx` | **Keep it.** EPUB 3 permits it for backward compatibility, and Kobo reads it. |
 | each annotated XHTML | add `xmlns:epub="http://www.idpf.org/2007/ops"` to `<html>` |
-| `stylesheet1.css` | append `.etx-note` / `.etx-footnote` rules (superscript marker; `aside` display rules) |
+| `stylesheet1.css` | append `.joven-note` / `.joven-footnote` rules (superscript marker; `aside` display rules) |
 
 **Output format → KEPUB is the default** ✅ decided
 
@@ -399,7 +399,7 @@ book.epub ──▶ [annotate] ──▶ book.annotated.epub ──▶ [kepubify
   plugin route.
 - **Conversion is the last step, after validation.** `epubcheck` validates EPUB, not
   KEPUB, so we must validate the intermediate EPUB 3 *before* kepubifying.
-  `etx verify` therefore runs on the `.epub`; the `.kepub.epub` gets structural
+  `joven verify` therefore runs on the `.epub`; the `.kepub.epub` gets structural
   checks only.
 - **Both artifacts are kept.** The EPUB 3 is the verifiable, spec-clean thing; the
   KEPUB is the device deliverable.
@@ -407,8 +407,8 @@ book.epub ──▶ [annotate] ──▶ book.annotated.epub ──▶ [kepubify
   a sideloaded KEPUB. `kepubify` handles this; assert it in `verify`.
 
 ```bash
-etx render book.epub annotations.json -o out/          # emits both .epub and .kepub.epub
-etx render book.epub annotations.json --no-kepub       # EPUB 3 only (debugging)
+joven render book.epub annotations.json -o out/          # emits both .epub and .kepub.epub
+joven render book.epub annotations.json --no-kepub       # EPUB 3 only (debugging)
 ```
 
 **Other Kobo notes:**
@@ -429,8 +429,8 @@ etx render book.epub annotations.json --no-kepub       # EPUB 3 only (debugging)
 `aside` must be styled so non-conforming readers don't dump the note inline:
 
 ```css
-aside.etx-footnote { display: none; }        /* conforming readers override for popup */
-a.etx-note { vertical-align: super; font-size: 0.7em; text-decoration: none; }
+aside.joven-footnote { display: none; }        /* conforming readers override for popup */
+a.joven-note { vertical-align: super; font-size: 0.7em; text-decoration: none; }
 ```
 
 **Build order within M3:** ship the trivial inline-bracket renderer *first*
@@ -480,7 +480,7 @@ That single property proves the tool never mangled, dropped, duplicated, or
 reordered McCarthy's prose. Assert it on the real book in CI (locally), not just
 on fixtures.
 
-### 5.2 Full integrity gate (`etx verify`)
+### 5.2 Full integrity gate (`joven verify`)
 
 | Check | Detects |
 |---|---|
@@ -529,7 +529,7 @@ tests/
 │   ├── test_text_preserved.py   THE invariant
 │   └── test_epubcheck.py        subprocess epubcheck, skip if absent
 └── smoke/
-    └── test_real_book.py        opt-in via ETX_TEST_EPUB env var
+    └── test_real_book.py        opt-in via JOVEN_TEST_EPUB env var
 ```
 
 Hard rule: **no network in tests.** `StubTranslator` everywhere; the Claude path
@@ -575,7 +575,7 @@ destroy every manual fix. Content hashes survive re-runs.
 
 ### 6.3 Merge semantics (this is what makes corrections durable)
 
-Re-running `etx detect` on an existing sidecar:
+Re-running `joven detect` on an existing sidecar:
 
 | Existing status | Behavior on re-detect |
 |---|---|
@@ -592,7 +592,7 @@ The insight: **don't wait to find errors while reading.** Triage the annotations
 *before* loading the book on the device:
 
 ```bash
-etx review annotations.json --epub book.epub
+joven review annotations.json --epub book.epub
 ```
 
 > **Built differently than planned.** This was specified as a static
@@ -638,7 +638,7 @@ source**, which the pipeline then faithfully translates:
 These sit anywhere from 0.51 to 0.99, so no threshold finds them — and they read as
 confident nonsense, the worst kind of error to put on a device.
 
-[`suspicion.py`](src/etx/suspicion.py) detects them without a list of known typos,
+[`suspicion.py`](src/joven/suspicion.py) detects them without a list of known typos,
 which would not survive a different book. It uses the *consequence* they share: **a
 word the model could not translate survives verbatim into the English.** Two
 signals, both cheap:
@@ -660,12 +660,12 @@ re-reading the paragraph. Book order for the remainder is not just a fallback:
 reading in narrative sequence is how you catch a translation that is fine in
 isolation but wrong for the scene.
 
-Then `etx render` and you're done.
+Then `joven render` and you're done.
 
 ### 6.5 Fixing *missed* passages → three escape hatches
 
 1. **Widen the escalation band and re-review.** The thresholds live in
-   [`detect/triage.py`](src/etx/detect/triage.py) (`accept_spanish`,
+   [`detect/triage.py`](src/joven/detect/triage.py) (`accept_spanish`,
    `reject_english`); lowering `reject_english` sends more of the middle to the
    LLM. Because `rejected` is sticky, re-reviewing is cheap — a re-run only asks
    you about annotations you have not already judged.
@@ -676,7 +676,7 @@ Then `etx render` and you're done.
    > have invited exactly the miscalibration §2.3 warns about.
 2. **Manual add by search.**
    ```bash
-   etx add annotations.json --find "Bueno pues" --translation "Well then"
+   joven add annotations.json --find "Bueno pues" --translation "Well then"
    ```
    Locates the text, mints the stable ID, sets `status: edited`.
 3. **Kobo highlight round-trip** — highlighting *is* the bug report. See §6.6.
@@ -685,7 +685,7 @@ Then `etx render` and you're done.
 
 > **Status: designed and schema-verified, no code written.** The database layout
 > below was confirmed on the physical device, so the groundwork is real — but
-> `etx add --from-kobo` **does not exist**. The `etx add --find` path (§6.5) covers
+> `joven add --from-kobo` **does not exist**. The `joven add --find` path (§6.5) covers
 > the same need with a phrase you type yourself. Kept here because the schema
 > findings are the expensive part and would otherwise have to be rediscovered.
 
@@ -714,7 +714,7 @@ queryable table.
       │
   ▼ plug in USB
 # NOT IMPLEMENTED — the design sketch for §6.6, shown for reference only
-etx add annotations.json --from-kobo /Volumes/KOBOeReader/.kobo/KoboReader.sqlite
+joven add annotations.json --from-kobo /Volumes/KOBOeReader/.kobo/KoboReader.sqlite
       │
       ├── read Bookmark table, filter to this book
       ├── keep only highlights carrying the marker note
@@ -723,10 +723,10 @@ etx add annotations.json --from-kobo /Volumes/KOBOeReader/.kobo/KoboReader.sqlit
       └── append to sidecar with status: edited
       │
   ▼
-etx render book.epub annotations.json -o out/     →  copy .kepub.epub back to device
+joven render book.epub annotations.json -o out/     →  copy .kepub.epub back to device
 ```
 
-The marker note matters: without it, `etx add` would hoover up your ordinary
+The marker note matters: without it, `joven add` would hoover up your ordinary
 reading highlights as translation requests. Filtering on the note keeps the two
 uses of highlighting separate.
 
@@ -766,7 +766,7 @@ Confirmed on device:
   so fuzzy matching with a similarity threshold is required, not optional.
 
 > **Status: still deferred past v1** — it's a convenience on top of
-> `etx add --find` — but it is now a known quantity rather than a guess.
+> `joven add --find` — but it is now a known quantity rather than a guess.
 
 ---
 
@@ -870,10 +870,10 @@ Guessing between those is hopeless, so **every segment writes a record** —
 annotated or not — to a JSONL trace:
 
 ```bash
-etx detect book.epub --trace trace.jsonl              # full two-tier run
-etx detect book.epub --backend none --trace t1.jsonl  # tier 1 only: instant, free
-etx explain trace.jsonl --find "Yo no sé nada"        # why was this skipped?
-etx explain trace.jsonl --outcome tier2_rejected      # everything the LLM dropped
+joven detect book.epub --trace trace.jsonl              # full two-tier run
+joven detect book.epub --backend none --trace t1.jsonl  # tier 1 only: instant, free
+joven explain trace.jsonl --find "Yo no sé nada"        # why was this skipped?
+joven explain trace.jsonl --outcome tier2_rejected      # everything the LLM dropped
 ```
 
 Each record carries the Tier-1 language, confidence, verdict and reason; the
@@ -925,13 +925,13 @@ A small hand-built benchmark could not have shown this.
 Each milestone ends with something runnable and tested.
 
 ### M0 — Skeleton (½ day)
-`uv`/venv, `pyproject.toml`, `typer` CLI, pytest, ruff. `etx inspect` prints the
-structure table from §1. **Exit:** `etx inspect` works on the real book.
+`uv`/venv, `pyproject.toml`, `typer` CLI, pytest, ruff. `joven inspect` prints the
+structure table from §1. **Exit:** `joven inspect` works on the real book.
 
 ### M1 — Lossless round-trip (1 day) ← *do not skip or reorder*
 Unpack → parse → re-serialize → repack, with **zero** changes. Get `mimetype`
 STORED-first, entry order, and XHTML byte-stability right. Wire up `epubcheck`.
-**Exit:** `etx render` with an empty sidecar produces a file that passes
+**Exit:** `joven render` with an empty sidecar produces a file that passes
 `epubcheck` and the text-preservation invariant. *This milestone is the
 foundation of all trust in the tool — the translation is worthless if the
 repacking corrupts the book.*
@@ -968,7 +968,7 @@ for the cost of a USB copy, and pivot to endnote links with zero rework (same
 sidecar, different renderer). Discovering it in M6 would be painful.
 
 **Exit:** a 3-annotation sample renders with working popups on the physical Kobo as
-a `.kepub.epub`, and `etx verify` is green on the intermediate EPUB 3.
+a `.kepub.epub`, and `joven verify` is green on the intermediate EPUB 3.
 
 ### M4 — Local LLM adjudication + translation (1–2 days)
 Batched prompts with surrounding context, JSON-schema-constrained output for
@@ -977,7 +977,7 @@ concurrency tuned to the machine. **Exit:** full-book pass at $0; the 887 ambigu
 sentences correctly triaged; cache makes re-runs instant.
 
 ### M5 — Review & corrections (1–2 days)
-HTML coverage report, then the localhost review UI. `etx add`. Merge semantics
+HTML coverage report, then the localhost review UI. `joven add`. Merge semantics
 with sticky `edited`/`approved`/`rejected`. **Exit:** you can fix a bad
 translation and re-render without re-running detection.
 
@@ -1011,7 +1011,7 @@ language pairs, a GUI, DRM handling, distribution.
 `matríz`, `copo`, `candela`, `vaquero`, `orgullo` inside English narration get no
 footnote. McCarthy uses them as texture; annotating each one is constant noise for
 negligible gain. Enforced by `is_embedded_loanword()` in
-[`detect/triage.py`](src/etx/detect/triage.py), applied on **both** pipeline paths
+[`detect/triage.py`](src/joven/detect/triage.py), applied on **both** pipeline paths
 and traced as its own outcome (`embedded_loanword`) so suppressions stay visible.
 
 The obvious implementation is wrong. "Reject when the Spanish span is a small
@@ -1072,7 +1072,7 @@ the models produce them in two distinct ways:
    `Porfirio, he said.` → `Porfirio, he said.` — names, places, and horse colours
    the model cannot translate and so simply returns.
 
-`is_normalization()` in [`translate.py`](src/etx/translate.py) catches both
+`is_normalization()` in [`translate.py`](src/joven/translate.py) catches both
 deterministically: flatten case and punctuation, then veto when
 `SequenceMatcher` ratio ≥ **0.75**. Prompt guidance alone was not enough to rely
 on — this holds whether or not the model complies.
@@ -1105,7 +1105,7 @@ released; the 29 that remain are no-ops, place names, or OCR garbage
 This is the same root cause as the loanword bug above, seen from the other side:
 **both gates were measuring text that included the dialogue tag.** The tag
 machinery therefore moved out of `detect/triage.py` into its own
-[`dialogue.py`](src/etx/dialogue.py), shared by both — which also stops the
+[`dialogue.py`](src/joven/dialogue.py), shared by both — which also stops the
 translator from importing `lingua`.
 
 #### Replaying gates without re-running the book
@@ -1131,7 +1131,7 @@ suppressions. Threshold changes should be justified this way before a re-run.
 1. **Which local model.** Benchmarked in M2b against the §2.2 adversarial cases →
    [`docs/model-selection.md`](docs/model-selection.md).
 2. ~~**Marker glyph.**~~ ✅ **Decided: `*`** (`MARKER_GLYPH` in
-   [`render/annotate.py`](src/etx/render/annotate.py)). Chosen against the real
+   [`render/annotate.py`](src/joven/render/annotate.py)). Chosen against the real
    Kobo page in M3 and device-verified across all ten markup recipes (§6.6b).
 3. **Kobo highlight round-trip** (§6.6). Deferred past v1 — needs the device in
    hand to confirm the schema.

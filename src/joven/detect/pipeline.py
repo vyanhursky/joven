@@ -9,7 +9,7 @@ Per paragraph:
    English context
 4. merge contiguous Spanish runs into one annotation per paragraph (§4.5)
 
-Every segment produces a :class:`~etx.trace.Decision`, whether or not it becomes
+Every segment produces a :class:`~joven.trace.Decision`, whether or not it becomes
 an annotation, so any missing footnote can be explained after the fact.
 """
 

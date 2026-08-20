@@ -271,7 +271,7 @@ class Sidecar:
         if version > SIDECAR_VERSION:
             raise ValueError(
                 f"sidecar version {version} is newer than this tool supports "
-                f"({SIDECAR_VERSION}) — upgrade etx"
+                f"({SIDECAR_VERSION}) — upgrade joven"
             )
         source = raw.get("source", {})
         return cls(

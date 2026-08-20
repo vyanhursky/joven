@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from etx.detect.pipeline import detect
-from etx.trace import Decision, Outcome, Tracer, load_trace
-from etx.translate import StubTranslator
+from joven.detect.pipeline import detect
+from joven.trace import Decision, Outcome, Tracer, load_trace
+from joven.translate import StubTranslator
 
 
 def test_tracer_writes_jsonl_and_reads_back(tmp_path: Path) -> None:
@@ -116,7 +116,7 @@ def test_vetoed_segments_are_traced_distinctly(sample_epub: Path) -> None:
     """A veto must be visible in the trace, not silently indistinguishable."""
     from dataclasses import dataclass
 
-    from etx.translate import Verdict
+    from joven.translate import Verdict
 
     @dataclass
     class NormalizingTranslator:

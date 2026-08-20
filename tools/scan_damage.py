@@ -26,9 +26,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from etx.epub.archive import EpubArchive  # noqa: E402
-from etx.epub.document import iter_text_units  # noqa: E402
-from etx.epub.package import read_package  # noqa: E402
+from joven.epub.archive import EpubArchive  # noqa: E402
+from joven.epub.document import iter_text_units  # noqa: E402
+from joven.epub.package import read_package  # noqa: E402
 
 _LETTER = re.compile(r"[^\W\d_]")
 _DIGIT = re.compile(r"\d")

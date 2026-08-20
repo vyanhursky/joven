@@ -11,13 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from etx.epub.archive import EpubArchive
-from etx.epub.document import document_text
-from etx.epub.package import read_package
-from etx.kepub import kepubify_available
-from etx.model import Annotation, Sidecar, Status
-from etx.render import render_epub
-from etx.verify import (
+from joven.epub.archive import EpubArchive
+from joven.epub.document import document_text
+from joven.epub.package import read_package
+from joven.kepub import kepubify_available
+from joven.model import Annotation, Sidecar, Status
+from joven.render import render_epub
+from joven.verify import (
     check_epubcheck,
     check_ids_unique,
     check_noterefs_resolve,
@@ -75,8 +75,8 @@ def test_inline_render_preserves_text(sample_epub: Path, tmp_path: Path, sidecar
     produced = EpubArchive.read(result.epub_path)
     assert check_text_preserved(EpubArchive.read(sample_epub), produced).ok
     assert "[How old are you?]" in produced.get("OEBPS/part1.xhtml").decode()
-    # Inline still upgrades the package: the data-etx marker is an HTML5 attribute
-    # that EPUB 2 rejects (epubcheck: 'attribute "data-etx" not allowed here').
+    # Inline still upgrades the package: the data-joven marker is an HTML5 attribute
+    # that EPUB 2 rejects (epubcheck: 'attribute "data-joven" not allowed here').
     assert result.upgraded_to_epub3 is True
     assert read_package(produced).version == "3.0"
 
@@ -180,7 +180,7 @@ def test_kepub_keeps_footnote_markup_and_prose(sample_epub: Path, tmp_path: Path
     assert body.count('epub:type="noteref"') == 2
     assert "koboSpan" in body  # kepubify really did run
     # the note bodies live in their own documents under the default recipe
-    notes = [n for n in kepub.xhtml_names() if "etx-notes/" in n]
+    notes = [n for n in kepub.xhtml_names() if "joven-notes/" in n]
     assert len(notes) == 2
     assert all('epub:type="footnote"' in kepub.get(n).decode() for n in notes)
 
@@ -263,10 +263,10 @@ def test_real_book_annotated_output_is_valid_epub3(
 def test_every_variant_passes_epubcheck(sample_epub: Path, tmp_path: Path, sidecar) -> None:
     """Regression: the inline variant shipped invalid EPUB 2 for its whole life.
 
-    ``data-etx`` is HTML5 and EPUB 2 rejects it, but no test had ever run
+    ``data-joven`` is HTML5 and EPUB 2 rejects it, but no test had ever run
     epubcheck against a non-footnote renderer, so nothing noticed.
     """
-    from etx.render.annotate import VARIANTS
+    from joven.render.annotate import VARIANTS
 
     for key in VARIANTS:
         result = render_epub(

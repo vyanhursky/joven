@@ -25,16 +25,16 @@ from typing import Protocol
 
 from lxml import etree
 
-from ..epub.document import ETX_ATTR, XHTML_NS, body_of, iter_blocks, text_of
+from ..epub.document import JOVEN_ATTR, XHTML_NS, body_of, iter_blocks, text_of
 from ..model import Annotation
 
 EPUB_NS = "http://www.idpf.org/2007/ops"
 EPUB_TYPE = f"{{{EPUB_NS}}}type"
 
 MARKER_GLYPH = "*"
-NOTES_DIR = "etx-notes"
-NOTE_ID_PREFIX = "etx-"
-REF_ID_PREFIX = "etx-ref-"
+NOTES_DIR = "joven-notes"
+NOTE_ID_PREFIX = "joven-"
+REF_ID_PREFIX = "joven-ref-"
 
 
 class RenderError(Exception):
@@ -181,8 +181,8 @@ class FootnoteRenderer(_Base):
 
     def css(self) -> str:
         rules = [
-            "/* --- etx translation footnotes --- */",
-            "a.etx-note {",
+            "/* --- joven translation footnotes --- */",
+            "a.joven-note {",
             "  vertical-align: super;",
             "  font-size: 0.7em;",
             "  text-decoration: none;",
@@ -194,12 +194,12 @@ class FootnoteRenderer(_Base):
             rules += [
                 "/* WARNING: suspected cause of Kobo's jump-to-start behaviour —",
                 "   a display:none target has no position to navigate to. */",
-                ".etx-footnote { display: none; }",
+                ".joven-footnote { display: none; }",
             ]
         elif self.hide == "offscreen":
             rules += [
                 "/* Kept in layout (so anchors resolve) but off the page. */",
-                ".etx-footnote {",
+                ".joven-footnote {",
                 "  position: absolute;",
                 "  left: -9999px;",
                 "  width: 1px;",
@@ -211,7 +211,7 @@ class FootnoteRenderer(_Base):
             rules += [
                 "/* Left in the flow: conforming readers still pop it up, and",
                 "   readers that don't at least render something navigable. */",
-                ".etx-footnote {",
+                ".joven-footnote {",
                 "  font-size: 0.85em;",
                 "  margin: 0.35em 0 0.6em 1.2em;",
                 "  text-indent: 0;",
@@ -250,10 +250,10 @@ class FootnoteRenderer(_Base):
             else:
                 marker.set("href", f"#{note_id}")
             marker.set("id", ref_id)
-            marker.set("class", "etx-note")
+            marker.set("class", "joven-note")
             if self.noteref:
                 marker.set(EPUB_TYPE, "noteref")
-            marker.set(ETX_ATTR, "marker")
+            marker.set(JOVEN_ATTR, "marker")
             marker.text = self.marker_glyph
             insert_at_offset(el, annotation.marker_offset, marker)
 
@@ -261,11 +261,11 @@ class FootnoteRenderer(_Base):
                 # Kobo's own spec example hangs id + epub:type on an inline
                 # <span>, but a span may not contain a <p> and may not sit
                 # directly in <body> — so wrap it in an unmarked block. The
-                # data-etx marker goes on the wrapper, since that is the whole
+                # data-joven marker goes on the wrapper, since that is the whole
                 # subtree the text invariant must exclude.
                 note = etree.Element(f"{{{XHTML_NS}}}p")
-                note.set("class", "etx-footnote")
-                note.set(ETX_ATTR, "note")
+                note.set("class", "joven-footnote")
+                note.set(JOVEN_ATTR, "note")
                 paragraph = etree.SubElement(note, f"{{{XHTML_NS}}}span")
                 paragraph.set("id", note_id)
                 if self.noteref:
@@ -273,10 +273,10 @@ class FootnoteRenderer(_Base):
             else:
                 note = etree.Element(f"{{{XHTML_NS}}}{self.element}")
                 note.set("id", note_id)
-                note.set("class", "etx-footnote")
+                note.set("class", "joven-footnote")
                 if self.noteref:
                     note.set(EPUB_TYPE, "footnote")
-                note.set(ETX_ATTR, "note")
+                note.set(JOVEN_ATTR, "note")
                 paragraph = etree.SubElement(note, f"{{{XHTML_NS}}}p")
 
             if self.backlink:
@@ -357,23 +357,23 @@ class InlineRenderer(_Base):
     close_bracket: str = "]"
 
     def needs_epub3(self) -> bool:
-        # Not for the brackets themselves — for the ``data-etx`` marker attribute.
+        # Not for the brackets themselves — for the ``data-joven`` marker attribute.
         # ``data-*`` is HTML5, which EPUB 3 permits and EPUB 2's XHTML 1.1 does
         # not, so an un-upgraded inline build fails epubcheck with
-        # 'attribute "data-etx" not allowed here'. The attribute is load-bearing
+        # 'attribute "data-joven" not allowed here'. The attribute is load-bearing
         # (it is how the text-preservation invariant finds inserted nodes), so the
         # package gets upgraded rather than the marker weakened to a class.
         return True
 
     def css(self) -> str:
-        return "span.etx-inline { font-style: italic; opacity: 0.8; }\n"
+        return "span.joven-inline { font-style: italic; opacity: 0.8; }\n"
 
     def apply(self, tree: etree._ElementTree, annotations: list[Annotation]) -> int:
         located = self._locate(tree, annotations)
         for annotation, el in located:
             span = etree.Element(f"{{{XHTML_NS}}}span")
-            span.set("class", "etx-inline")
-            span.set(ETX_ATTR, "marker")
+            span.set("class", "joven-inline")
+            span.set(JOVEN_ATTR, "marker")
             span.text = f"{self.open_bracket}{annotation.translation}{self.close_bracket}"
             insert_at_offset(el, annotation.marker_offset, span)
         return len(located)

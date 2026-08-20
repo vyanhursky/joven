@@ -14,10 +14,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from etx.epub.archive import EpubArchive
-from etx.epub.document import iter_text_units
-from etx.epub.package import read_package
-from etx.model import Annotation, Sidecar, file_sha256, normalize, occurrence_indices
+from joven.epub.archive import EpubArchive
+from joven.epub.document import iter_text_units
+from joven.epub.package import read_package
+from joven.model import Annotation, Sidecar, file_sha256, normalize, occurrence_indices
 
 # (paragraph text, Spanish substring to mark, translation)
 #

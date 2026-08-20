@@ -89,7 +89,7 @@ def measure(
 ) -> Measurement:
     """Measure a prospective run without making a single translation call.
 
-    Passing ``translator=None`` to :func:`~etx.detect.pipeline.detect` runs Tier 1
+    Passing ``translator=None`` to :func:`~joven.detect.pipeline.detect` runs Tier 1
     only — free and offline — and records every segment that *would* have
     escalated as ``tier2_rejected`` with a "no translator" reason. Those records
     are the call list, and their text is the variable half of each prompt.
