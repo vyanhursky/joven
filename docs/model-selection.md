@@ -33,8 +33,10 @@ python tools/bench_pipeline.py aya-expanse:8b  # the shipping pipeline
 gemma3 for the same accuracy. `gemma3:12b` is the fallback if qwen3 ever
 regresses; `aya-expanse:8b`'s single miss is the `A Casas Grandes` case below.
 
-`s/case` is from the standalone run, where every case hits the LLM. Full-book
-escalated pass: **~14 min (qwen3), ~19 min (aya), ~43 min (gemma3)** — all $0.
+`s/case` is from the standalone run, where every case hits the LLM. Projected
+full-book escalated pass: ~14 min (qwen3), ~19 min (aya), ~43 min (gemma3) — all
+$0. The measured qwen3 run came in at **73 minutes**; see the throughput note below
+for why the projection was low.
 
 ### Standalone scores (LLM with no Tier 1 in front of it)
 
@@ -68,20 +70,16 @@ The case escalates to Tier 2 like any other and the model decides; qwen3 and
 gemma3 call it English unprompted.
 
 `aya-expanse` is Cohere's explicitly multilingual model, which is presumably why
-it edges the others on Spanish fragments. `qwen3:8b` is the **speed alternative**
-— 25% faster, one arguable case behind.
+it was expected to edge the others on Spanish fragments. On the corrected labels it
+does not: qwen3 matches gemma3 on accuracy and beats both on speed.
 
-> ⚠️ **Don't over-read the 27/27.** The only case separating aya from the other
-> two is `A Casas Grandes, said Billy.`, which is arguably mislabelled in the
-> benchmark (`A Casas Grandes` = "To Casas Grandes" — mostly a place name, so
-> "not worth translating" is a defensible answer). Treat this as "all three are
-> good enough; aya is marginally best" and re-decide against the ~250-case golden
-> set in M2 before calling it settled.
-
-**Throughput at 2.5 s/case:** ~10 escalated cases per 27 paragraphs scales to
-roughly **450 LLM calls for the full book** (~1,200 candidate sentences, 37 %
-escalation rate) → **~19 minutes single-threaded, $0**. With the on-disk cache,
-re-runs are instant.
+**Throughput, predicted and measured.** At 2.5 s/case this benchmark predicted
+roughly **450 LLM calls and ~19 minutes** for the full book, extrapolating a 37 %
+escalation rate from 27 paragraphs. The real run escalated **2,556 of 12,302
+segments (21 %)** and took **73 minutes** — a lower escalation *rate* spread over
+far more segments than the small sample implied. Same lesson as the threshold
+correction below: 27 cases size a model well and size a book badly. With the
+on-disk cache, re-runs are instant.
 
 ---
 

@@ -14,13 +14,13 @@ v1 scope: **EPUB input, Spanish→English, Cormac McCarthy's *The Crossing*.**
 | Local LLM adjudication at book scale | full book run — 12,302 segments, 2,556 LLM calls, 726 footnotes, 73 min, $0 |
 | Decision trace (`--trace` / `joven explain`) | see §6.7 |
 | Review & corrections | `joven review` (local UI) + `joven add`; round-trip verified |
-| The finished book | annotated KEPUB on the device, 11 of 11 integrity checks green |
+| The finished book | annotated KEPUB on the device, 12 of 12 integrity checks green |
 
 The first full-book run paid for itself by exposing two false-suppression bugs
 that no synthetic case had caught — both traced to the same root cause, and both
 now fixed and pinned by tests drawn from the real corpus (§7).
 
-**335 tests passing, ruff clean.** Verified on the real book: lossless
+**353 tests passing, ruff clean.** Verified on the real book: lossless
 round-trip, text-preservation invariant, `epubcheck` clean **as EPUB 3**,
 noteref→footnote integrity, and KEPUB conversion preserving all 623,144
 characters of prose with all `epub:type` markup intact.
@@ -307,7 +307,9 @@ key.** Model selection was settled empirically — see
 
 **Chosen model: `qwen3:8b`** (5.2 GB) — 27/27 on the two-tier benchmark, 100% span
 precision, zero false positives, ~1.9 s/case. `gemma3:12b` ties on accuracy but is
-3× slower; `aya-expanse:8b` is one case behind. Full-book pass ≈ 14 minutes, $0.
+3× slower; `aya-expanse:8b` is one case behind. The full-book pass was predicted
+here at ≈ 14 minutes and **measured at 73** — the estimate came from the 27-case
+benchmark's escalation rate, which book scale did not bear out.
 
 Hardware budget: 16 GB unified memory, arm64. Leave ~5 GB for the OS, so the
 practical ceiling is a **~8–10 GB model** — i.e. 7–14B at 4-bit quantization.

@@ -23,10 +23,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DOCS = ["README.md", "DESIGN.md", "docs/model-selection.md"]
+DOCS = ["README.md", "DESIGN.md", "docs/model-selection.md", "docs/troubleshooting.md"]
 INVOCATION = re.compile(r"\bjoven ([a-z][a-z-]*)((?: [^\n#]*)?)")
 FLAG = re.compile(r"--[a-z][a-z0-9-]+")
 LINK = re.compile(r"\[[^\]]*\]\(([^)#][^)]*)\)")
+# Screenshots are embedded as HTML so they can sit side by side, which puts their
+# paths outside Markdown link syntax and therefore outside the check above.
+IMG_SRC = re.compile(r"""<img[^>]*\bsrc=["']([^"']+)["']""")
 
 
 def cli_surface(executable: str) -> dict[str, set[str]]:
@@ -52,8 +55,8 @@ def cli_surface(executable: str) -> dict[str, set[str]]:
 def check_links() -> list[str]:
     """Relative links must point at files that exist.
 
-    A dead link is the most common defect in a public README and the easiest to
-    ship, because the author knows what they meant and never clicks it.
+    A dead link or a broken image is the most common defect in a public README and the
+    easiest to ship, because the author knows what they meant and never clicks it.
     """
     problems: list[str] = []
     for name in [*DOCS, "CHANGELOG.md"]:
@@ -61,12 +64,13 @@ def check_links() -> list[str]:
         if not path.is_file():
             continue
         for i, line in enumerate(path.read_text(encoding="utf-8").splitlines()):
-            for match in LINK.finditer(line):
-                target = match.group(1).split("#")[0].strip()
-                if not target or target.startswith(("http://", "https://", "mailto:")):
-                    continue
-                if not (path.parent / target).exists():
-                    problems.append(f"{name}:{i + 1}: dead link -> {target}")
+            for pattern, label in ((LINK, "dead link"), (IMG_SRC, "missing image")):
+                for match in pattern.finditer(line):
+                    target = match.group(1).split("#")[0].strip()
+                    if not target or target.startswith(("http://", "https://", "mailto:")):
+                        continue
+                    if not (path.parent / target).exists():
+                        problems.append(f"{name}:{i + 1}: {label} -> {target}")
     return problems
 
 

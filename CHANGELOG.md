@@ -21,7 +21,7 @@ Verified on the Knopf 1994 edition, 151,865 words:
 | escalated to the LLM | 2,556 (21%) |
 | footnotes produced | 726 |
 | wall clock / cost | 73 minutes / $0 |
-| integrity checks | 11 of 11 |
+| integrity checks | 12 of 12 |
 
 ### Findings worth reading the source for
 
