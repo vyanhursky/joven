@@ -122,12 +122,52 @@ Five commands, two of which do the real work. Detection is **two-tier**: a cheap
 statistical pass judges every sentence, and only the fraction it cannot call is put
 to the local LLM.
 
-```
-epub → extract text units → segment into sentences
-     → TIER 1  lingua triage: confident Spanish / confident English / abstain
-     → TIER 2  local LLM adjudicates the abstention band (~21% of segments)
-     → annotations.json          ← source of truth, human-editable
-     → render (idempotent)  →  .epub  →  kepubify  →  .kepub.epub
+```mermaid
+flowchart TD
+    START(["your book.epub"])
+
+    subgraph DETECT["joven detect · ~73 min · $0"]
+        direction TB
+        EXTRACT["extract text units<br>addressable by file, element path, offset"]
+        SEG["segment into sentences<br>character offsets preserved"]
+        T1{"TIER 1 — lingua triage<br>statistical, instant, free"}
+        T2{"TIER 2 — local LLM<br>qwen3:8b via Ollama, with surrounding context"}
+        MERGE["merge contiguous Spanish<br>one footnote per paragraph"]
+        EXTRACT --> SEG --> T1
+        T1 -- "abstains — 21% of segments" --> T2
+        T1 -- "confident Spanish" --> MERGE
+        T2 -- "yes, and here is the span" --> MERGE
+    end
+
+    SKIP["left alone<br>but still recorded in trace.jsonl"]
+    T1 -- "confident English" --> SKIP
+    T2 -- "not Spanish" --> SKIP
+
+    SIDECAR[("annotations.json<br>source of truth, human-editable")]
+    REVIEW["joven review<br>approve / edit / reject<br>decisions survive re-detection"]
+    MERGE --> SIDECAR
+    SIDECAR <--> REVIEW
+
+    subgraph RENDER["joven render · idempotent"]
+        direction TB
+        ANN["insert markers and note documents<br>EPUB 2 → 3 package upgrade"]
+        EPUB3(["book.annotated.epub"])
+        KEP["kepubify"]
+        ANN --> EPUB3 --> KEP
+    end
+
+    START --> EXTRACT
+    START -. "the original, never edited in place" .-> ANN
+    SIDECAR --> ANN
+    KEP --> OUT(["book.annotated.kepub.epub<br>copy this to the Kobo"])
+    EPUB3 -. "validated by" .-> VERIFY["joven verify<br>12 checks · epubcheck · text-preservation invariant"]
+
+    classDef artifact fill:#fff4e0,stroke:#b8860b,stroke-width:2px,color:#111
+    classDef endpoint fill:#e6f4ea,stroke:#2e7d4f,stroke-width:2px,color:#111
+    classDef muted fill:#f2f2f2,stroke:#999,color:#444
+    class SIDECAR artifact
+    class START,OUT endpoint
+    class SKIP muted
 ```
 
 **The EPUB is never edited in place.** `annotations.json` is the durable artifact,
