@@ -17,6 +17,7 @@ a design document can show a sketch of something unbuilt without lying about it.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -30,26 +31,46 @@ LINK = re.compile(r"\[[^\]]*\]\(([^)#][^)]*)\)")
 # Screenshots are embedded as HTML so they can sit side by side, which puts their
 # paths outside Markdown link syntax and therefore outside the check above.
 IMG_SRC = re.compile(r"""<img[^>]*\bsrc=["']([^"']+)["']""")
+# Rich draws the help as a table, and which box characters it uses depends on
+# whether the *child* process's stdout can encode them: under a C locale it falls
+# back from │ to a plain |. That is what broke this check the first time CI ran
+# it. Pin the child's encoding so the rendering is identical everywhere, and
+# accept either character anyway.
+HELP_ENV = {**os.environ, "PYTHONIOENCODING": "utf-8", "COLUMNS": "200"}
+COMMAND_ROW = re.compile(r"^\s*[│|]\s+([a-z][a-z-]*)\s{2,}\S", re.M)
+PLAIN_ROW = re.compile(r"^\s{2,}([a-z][a-z-]*)\s{2,}\S", re.M)
 
 
-def cli_surface(executable: str) -> dict[str, set[str]]:
-    """Every command the CLI really has, and the flags each really accepts."""
+def _help(executable: str, *args: str) -> str:
+    """``--help`` output, rendered the same way on every machine."""
     try:
-        top = subprocess.run([executable, "--help"], capture_output=True, text=True).stdout
+        return subprocess.run(
+            [executable, *args, "--help"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=HELP_ENV,
+        ).stdout
     except FileNotFoundError:
         raise SystemExit(
             f"error: {executable!r} is not on PATH.\n"
             f"       Install the package first (pip install -e .), or point at the\n"
             f"       built script: --executable ./.venv/bin/joven"
         ) from None
-    commands = set(re.findall(r"^\s*│\s+([a-z][a-z-]*)\s", top, re.M))
-    if not commands:  # help rendering differs across typer/rich versions
-        commands = set(re.findall(r"^\s{2,}([a-z][a-z-]*)\s{2,}\S", top, re.M))
-    surface: dict[str, set[str]] = {}
-    for cmd in sorted(commands):
-        out = subprocess.run([executable, cmd, "--help"], capture_output=True, text=True).stdout
-        surface[cmd] = set(FLAG.findall(out))
-    return surface
+
+
+def cli_surface(executable: str) -> dict[str, set[str]]:
+    """Every command the CLI really has, and the flags each really accepts."""
+    top = _help(executable)
+    commands = set(COMMAND_ROW.findall(top)) or set(PLAIN_ROW.findall(top))
+    if not commands:
+        # Say what was actually seen. The old message blamed the installation,
+        # which sent the first real investigation down the wrong path entirely.
+        raise SystemExit(
+            f"error: could not find any commands in `{executable} --help`.\n"
+            f"       Its output was:\n\n{top or '       (nothing on stdout)'}"
+        )
+    return {cmd: set(FLAG.findall(_help(executable, cmd))) for cmd in sorted(commands)}
 
 
 def check_links() -> list[str]:
@@ -76,9 +97,6 @@ def check_links() -> list[str]:
 
 def check(executable: str) -> list[str]:
     surface = cli_surface(executable)
-    if not surface:
-        return ["could not read the CLI surface — is the package installed?"]
-
     problems: list[str] = []
     for name in DOCS:
         path = ROOT / name
