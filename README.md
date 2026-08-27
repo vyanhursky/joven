@@ -36,24 +36,86 @@
                               ===
 ```
 
-**Finds the untranslated Spanish in an English novel and inserts tappable
-translation footnotes**, so you can read McCarthy's border trilogy on a Kobo
-without reaching for a phone every other page.
-
-*The Crossing* is mostly English with long untranslated stretches of
-Mexican-border Spanish — hundreds of lines of dialogue the book never translates
-for you. This annotates them in place, leaving the prose byte-for-byte unchanged.
-
-> ### `Escúchame, joven`
+> The boy sat down to read the book. He read of horses and of the country to the
+> south and of men who spoke in a tongue he did not have.
+> *Escúchame, joven,* said the old man, and the boy did not know what it was he
+> was meant to hear. So he set down the book and took up the phone and fed the
+> words into Google Translate one at a time like a man counting stones across a
+> river, and when he looked up again the twilight had gone out of the valley and
+> the page had gone cold and the old man was still standing there in the dark
+> holding his counsel like a man holding a lamp for nobody.
 >
-> — *Listen to me, young man.* It appears nineteen times in the book, and eighteen
-> of this run's footnotes land on a passage containing it. Hence the name.
+> So the boy wrote a python service. It went through the book and marked out every
+> passage that was not English and put the question to a small model that ran on
+> his own machine and asked nothing of anyone and told no one what it had seen.
+> Where the Spanish had been it set a single asterisk and no more than that, and
+> under the asterisk it laid the English down like a coin under a tongue, and the
+> boy could take it or leave it as he pleased. He read the book through and he
+> never once opened Google Translate. The old man went on speaking in his own
+> language as he had always done and as he would go on doing, and the boy
+> understood him, and the sun went down bloodred over the mesa and he read on by
+> the pale light of the device until the battery gave out.
+
+**Joven finds the untranslated Spanish in an English novel and inserts tappable
+translation footnotes.** It was created specifically to improve the readability of
+Cormac McCarthy's *The Crossing*, and will work well for other McCarthy westerns.
 
 Everything runs on your machine against a local model: no API key, no per-book
 cost, nothing uploaded.
 
 **Design, measurements, and roadmap: [DESIGN.md](DESIGN.md).**
 **Local model benchmark: [docs/model-selection.md](docs/model-selection.md).**
+
+## Why this is needed
+
+*The Crossing* is an English novel with a great deal of Spanish in it, and the
+book never translates a word of it. That is a deliberate artistic choice and a
+good one — but on a Kobo at eleven at night it is a wall.
+
+**The e-reader cannot help you.** The Spanish is not marked up in any way: in the
+retail EPUB, `dc:language` is `en` and there are exactly **zero** `lang`
+attributes in 4,465 paragraphs. As far as the device is concerned the entire book
+is English. And even where a dictionary fires, it is a word-at-a-time tool aimed
+at vocabulary — it has nothing to say about a line of idiomatic border Spanish.
+
+**You often cannot tell where the Spanish begins.** McCarthy uses no quotation
+marks, so speech and narration run together in one stream, and the Spanish arrives
+in four distinct shapes:
+
+```text
+A  Vaya con Dios.                          a whole paragraph, no English at all
+B  Cuántos años tienes? the old man said.  Spanish speech, English dialogue tag
+C  The matríz will not help you, he said.  English prose, Spanish loanword — do NOT translate
+D  Escúchame, joven, the old man wheezed.  Spanish opener, then English narration
+```
+
+**C and D are the trap**, and they break naive per-paragraph detection in opposite
+directions: C is a false positive waiting to happen — *matríz* and *bueno* and *sí*
+are English now, and footnoting them is worse than useless — while D is a
+guaranteed miss, a paragraph that reads as English overall with the one line you
+actually needed sitting at the front of it. Getting these two right is the whole
+problem, and it is why the pipeline works on sentences rather than paragraphs and
+sends anything it is unsure of to a model. See [DESIGN.md](DESIGN.md) §1.1.
+
+**So the choice is a bad one either way:** stop reading and type the line into a
+phone, breaking the trance the prose spent forty pages building, or skim past it
+and accept a hole in the page. Over one novel this happens **726 times**.
+
+## What you get
+
+A copy of your own EPUB in which every Spanish passage carries a small `*`. Tap
+it and the translation appears in the reader's own footnote popup; ignore it and
+the page reads exactly as the author set it down.
+
+- **Unintrusive by construction.** One asterisk. No inline brackets, no interlinear
+  clutter, no colour. The footnote is opt-in, the way McCarthy's silence is opt-in.
+- **The prose is untouched.** Strip the inserted nodes from the output and what
+  remains is *byte-identical* to the original — enforced by a test, verified on the
+  real book.
+- **It stays on your machine.** A local `qwen3:8b` does the translating — 73
+  minutes for the whole novel, $0, and the book never leaves the laptop.
+- **Precision over recall.** A spurious footnote on `Go on.` is worse than a missed
+  one, so ambiguous cases escalate to the model rather than guess.
 
 ## Status
 
@@ -196,12 +258,10 @@ The EPUB is never edited in place. `annotations.json` is the durable artifact, s
 corrections mean editing the sidecar and re-rendering — never re-translating. Human
 edits are sticky across re-detection.
 
-Two properties are load-bearing and enforced by tests:
-
-1. **Text preservation.** Strip the inserted annotation nodes from the output and
-   the remaining prose is byte-identical to the original.
-2. **Precision over recall.** A spurious footnote on `Go on.` is worse than a
-   missed one, so ambiguous cases escalate rather than guess.
+The two promises above are load-bearing, so both are enforced by tests rather than
+by care: text preservation is a byte-comparison run over the whole book on every
+render, and the precision bias is pinned by a corpus of adversarial cases drawn
+from the real text (`tools/bench_pipeline.py`).
 
 ## Licence
 
