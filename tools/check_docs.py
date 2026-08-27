@@ -31,20 +31,27 @@ LINK = re.compile(r"\[[^\]]*\]\(([^)#][^)]*)\)")
 # Screenshots are embedded as HTML so they can sit side by side, which puts their
 # paths outside Markdown link syntax and therefore outside the check above.
 IMG_SRC = re.compile(r"""<img[^>]*\bsrc=["']([^"']+)["']""")
-# Rich draws the help as a table, and which box characters it uses depends on
-# whether the *child* process's stdout can encode them: under a C locale it falls
-# back from │ to a plain |. That is what broke this check the first time CI ran
-# it. Pin the child's encoding so the rendering is identical everywhere, and
-# accept either character anyway.
-HELP_ENV = {**os.environ, "PYTHONIOENCODING": "utf-8", "COLUMNS": "200"}
+# Rich renders the help as a table, and two things about that rendering vary with
+# the environment rather than with the CLI -- which is what broke this check the
+# first two times CI ran it:
+#
+#   * the box characters depend on whether the *child's* stdout can encode them,
+#     falling back from │ to a plain | under a C locale;
+#   * on a CI runner rich emits ANSI colour, so a row arrives as
+#     "\x1b[2m│\x1b[0m \x1b[1;36minspect\x1b[0m ..." and the box character is no
+#     longer the first thing on the line.
+#
+# So normalize the output before reading it, and keep the patterns forgiving.
+HELP_ENV = {**os.environ, "PYTHONIOENCODING": "utf-8", "COLUMNS": "200", "NO_COLOR": "1"}
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 COMMAND_ROW = re.compile(r"^\s*[│|]\s+([a-z][a-z-]*)\s{2,}\S", re.M)
 PLAIN_ROW = re.compile(r"^\s{2,}([a-z][a-z-]*)\s{2,}\S", re.M)
 
 
 def _help(executable: str, *args: str) -> str:
-    """``--help`` output, rendered the same way on every machine."""
+    """``--help`` output, normalized so it reads the same on every machine."""
     try:
-        return subprocess.run(
+        out = subprocess.run(
             [executable, *args, "--help"],
             capture_output=True,
             text=True,
@@ -57,6 +64,7 @@ def _help(executable: str, *args: str) -> str:
             f"       Install the package first (pip install -e .), or point at the\n"
             f"       built script: --executable ./.venv/bin/joven"
         ) from None
+    return ANSI.sub("", out)
 
 
 def cli_surface(executable: str) -> dict[str, set[str]]:
