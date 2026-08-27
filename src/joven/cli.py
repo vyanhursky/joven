@@ -117,6 +117,11 @@ def render(
             f"sidecar: {len(sidecar.annotations)} annotations "
             f"({', '.join(f'{v} {k}' for k, v in counts.items() if v)})"
         )
+    if result.normalized_kobo:
+        typer.echo(
+            f"source was already Kobo-converted: stripped koboSpans from "
+            f"{len(result.normalized_kobo)} document(s) before annotating"
+        )
     if result.upgraded_to_epub3:
         typer.echo("upgraded package to EPUB 3.0 (added nav document)")
     if result.stylesheet:

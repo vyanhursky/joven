@@ -348,6 +348,43 @@ def check_kepub_naming(path: Path) -> Finding:
     )
 
 
+def check_marker_span_nesting(produced: EpubArchive) -> Finding:
+    """No inserted node may sit inside a ``koboSpan``.
+
+    This is the one failure mode that every other check is blind to, because the
+    text is genuinely present in the file and only disappears in Kobo's renderer.
+    A koboSpan is treated as a leaf text unit: give one mixed content and the
+    device renders the child element and drops the span's own text, so a marker
+    inserted inside ``kobo.681.1`` shows a bare asterisk where the passage was.
+
+    kepubify's own placement — marker outside the span, wrapped in a span of its
+    own — is the correct shape, and it is what
+    :func:`joven.render.kobo.dekepubify` exists to let us reach.
+    """
+    offenders: list[str] = []
+    for href in produced.xhtml_names():
+        try:
+            tree = parse(produced.get(href))
+        except Exception:  # noqa: BLE001 - other checks report malformed documents
+            continue
+        for node in tree.iter():
+            if node.get(JOVEN_ATTR) is None:
+                continue
+            for ancestor in node.iterancestors(f"{{{XHTML_NS}}}span"):
+                if ancestor.get("class") == "koboSpan":
+                    label = node.get("id") or node.tag
+                    offenders.append(f"{href}: {label} inside {ancestor.get('id')}")
+                    break
+    if offenders:
+        return Finding(
+            False,
+            "markers outside koboSpans",
+            f"{len(offenders)} inserted node(s) nested in a koboSpan — the passage will "
+            f"vanish on the device:\n       " + "\n       ".join(offenders[:5]),
+        )
+    return Finding(True, "markers outside koboSpans")
+
+
 # ------------------------------------------------------------------- driver
 
 
@@ -379,6 +416,7 @@ def verify(
             check_noterefs_resolve(kepub),
             check_kobo_popup_conditions(kepub),
             check_ids_unique(kepub),
+            check_marker_span_nesting(kepub),
         ):
             findings.append(Finding(finding.ok, f"kepub: {finding.check}", finding.detail))
     return findings

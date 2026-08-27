@@ -16,6 +16,7 @@ from ..epub.package import read_package
 from ..kepub import kepubify, kepubify_available
 from ..model import Sidecar
 from .annotate import Renderer, RenderError, get_renderer
+from .kobo import dekepubify, is_kepubified
 from .upgrade import (
     add_epub_namespace,
     ensure_epub_namespace,
@@ -38,6 +39,7 @@ class RenderResult:
     stylesheet: str | None = None
     skipped: list[str] = field(default_factory=list)
     repaired: list[str] = field(default_factory=list)
+    normalized_kobo: list[str] = field(default_factory=list)
     note_documents: list[str] = field(default_factory=list)
 
 
@@ -66,6 +68,14 @@ def render_epub(
         if href not in archive:
             result.skipped.append(href)
             grouped.pop(href)
+
+    # A source that is already Kobo-converted must be un-converted before we
+    # touch it: a marker inserted inside a koboSpan renders on the device as a
+    # bare asterisk with the passage gone, and no file-level check can see it.
+    # Skipped when there is nothing to annotate, so the passthrough render stays
+    # byte-identical.
+    if grouped and is_kepubified(archive):
+        result.normalized_kobo = dekepubify(archive)
 
     if grouped:
         result.stylesheet = register_stylesheet(archive, package, engine.css())

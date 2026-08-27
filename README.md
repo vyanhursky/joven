@@ -66,44 +66,28 @@ cost, nothing uploaded.
 **Design, measurements, and roadmap: [DESIGN.md](DESIGN.md).**
 **Local model benchmark: [docs/model-selection.md](docs/model-selection.md).**
 
-## Why this is needed
+## Why this service needed
 
-*The Crossing* is an English novel with a great deal of Spanish in it, and the
-book never translates a word of it. That is a deliberate artistic choice and a
-good one — but on a Kobo at eleven at night it is a wall.
+Using McCarthy's *The Crossing* as an example - it is an English novel with a great deal of Spanish in it, and the
+book never translates or sufficiently contextualizes it. Spanish phrases and sentences are mixed into English paragraphs, and reaching for a dictionary/translator interrupts the flow of reading. 
 
-**The e-reader cannot help you.** The Spanish is not marked up in any way: in the
-retail EPUB, `dc:language` is `en` and there are exactly **zero** `lang`
-attributes in 4,465 paragraphs. As far as the device is concerned the entire book
-is English. And even where a dictionary fires, it is a word-at-a-time tool aimed
-at vocabulary — it has nothing to say about a line of idiomatic border Spanish.
-
-**You often cannot tell where the Spanish begins.** McCarthy uses no quotation
+**E-reader Dictionary and Translate struggle with McCarthy bilingualism.** McCarthy uses no quotation
 marks, so speech and narration run together in one stream, and the Spanish arrives
 in four distinct shapes:
 
 ```text
 A  Vaya con Dios.                          a whole paragraph, no English at all
 B  Cuántos años tienes? the old man said.  Spanish speech, English dialogue tag
-C  The matríz will not help you, he said.  English prose, Spanish loanword — do NOT translate
+C  The matríz will not help you, he said.  English prose, Spanish loanword
 D  Escúchame, joven, the old man wheezed.  Spanish opener, then English narration
 ```
 
-**C and D are the trap**, and they break naive per-paragraph detection in opposite
-directions: C is a false positive waiting to happen — *matríz* and *bueno* and *sí*
-are English now, and footnoting them is worse than useless — while D is a
-guaranteed miss, a paragraph that reads as English overall with the one line you
-actually needed sitting at the front of it. Getting these two right is the whole
-problem, and it is why the pipeline works on sentences rather than paragraphs and
-sends anything it is unsure of to a model. See [DESIGN.md](DESIGN.md) §1.1.
+In *The Crossing*, there are a total of **726** Spanish sentences or phrases. As a non-spanish reader, your choices are to either stop reading and translate the phrase into a phone, breaking the trance the prose spent forty pages building, or skim past it and accept a hole in the page.
 
-**So the choice is a bad one either way:** stop reading and type the line into a
-phone, breaking the trance the prose spent forty pages building, or skim past it
-and accept a hole in the page. Over one novel this happens **726 times**.
 
-## What you get
+## Service-modified Epub
 
-A copy of your own EPUB in which every Spanish passage carries a small `*`. Tap
+This service provides a modified copy of your EPUB in which every Spanish passage carries a small `*`. Tap
 it and the translation appears in the reader's own footnote popup; ignore it and
 the page reads exactly as the author set it down.
 
@@ -131,7 +115,7 @@ Last full run — Knopf's 1994 edition of *The Crossing*, 151,865 words:
 | escalated to the LLM | 2,556 (21%) |
 | footnotes produced | 726 |
 | wall clock / cost | 73 minutes / $0 |
-| integrity checks | 11 of 11 passing |
+| integrity checks | 12 of 12 passing |
 
 Two earlier runs against a damaged scan of the same novel paid for themselves by
 exposing bugs no synthetic fixture had caught — see [DESIGN.md](DESIGN.md) §7.
