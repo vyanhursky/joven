@@ -339,3 +339,98 @@ def test_inline_renderer_also_needs_epub3() -> None:
     build fails epubcheck with 'attribute "data-joven" not allowed here'.
     """
     assert get_renderer("inline").needs_epub3() is True
+
+
+# ------------------------------------------- manifest properties for EPUB 3
+
+
+def test_scripted_property_is_declared_for_documents_with_a_script(
+    sample_epub, tmp_path
+) -> None:
+    """kepubify injects a script into every document without updating the OPF.
+
+    A book that has already been through kepubify therefore arrives with one
+    OPF-014 per document — 19 of the 20 errors in the EPUB 3 packaging of *The
+    Crossing*. Since we are the ones declaring EPUB 3, we repair it rather than
+    let the integrity gate report known-failing output.
+    """
+    import posixpath
+
+    from lxml import etree
+
+    from joven.epub.archive import EpubArchive
+    from joven.epub.package import read_package
+    from joven.render.upgrade import OPF_NS, declare_manifest_properties
+
+    archive = EpubArchive.read(sample_epub)
+    package = read_package(archive)
+
+    # Inject a script the way kepubify does, into a document the manifest lists.
+    target = package.spine_hrefs[0]
+    doctored = archive.get(target).replace(
+        b"</head>", b'<script type="text/javascript" src="../js/kobo.js"/></head>'
+    )
+    assert b"<script" in doctored, "fixture has no </head> to inject into"
+    archive.replace(target, doctored)
+
+    opf = etree.fromstring(archive.get(package.opf_path))
+    declared = declare_manifest_properties(
+        archive, opf, posixpath.dirname(package.opf_path)
+    )
+
+    assert any(d.endswith(":scripted") for d in declared), declared
+    manifest = opf.find(f"{{{OPF_NS}}}manifest")
+    scripted = [
+        item
+        for item in manifest.findall(f"{{{OPF_NS}}}item")
+        if "scripted" in (item.get("properties") or "").split()
+    ]
+    assert len(scripted) == 1, "exactly the doctored document should be flagged"
+
+
+def test_escaped_script_text_does_not_trigger_the_property() -> None:
+    """`&lt;script` is prose *about* a script, not a script — must not be flagged."""
+    from joven.render.upgrade import _FEATURE_MARKERS
+
+    marker = _FEATURE_MARKERS["scripted"]
+    assert marker not in b"<p>the &lt;script&gt; element</p>"
+    assert marker in b'<head><script src="k.js"/></head>'
+
+
+def test_ncx_identifier_is_synced_to_the_opf(sample_epub) -> None:
+    """The OPF is authoritative in EPUB 3; the NCX is kept only for compatibility.
+
+    Publishers hit this by assigning a UUID in the OPF while the NCX keeps the
+    ISBN it was generated with, which epubcheck reports as a mismatch.
+    """
+    from joven.epub.archive import EpubArchive
+    from joven.epub.package import read_package
+    from joven.render.upgrade import sync_ncx_identifier
+
+    archive = EpubArchive.read(sample_epub)
+    package = read_package(archive)
+    ncx = next((h for h in package.manifest.values() if h.endswith(".ncx")), None)
+    if ncx is None:
+        pytest.skip("fixture has no NCX")
+
+    identifier = package.metadata["identifier"]
+    # Swap the value directly rather than by regex: real NCX files write the
+    # attributes in either order (`content` first in both the fixture and the
+    # Knopf edition), and an order-sensitive pattern silently matches nothing.
+    archive.replace(ncx, archive.get(ncx).replace(identifier.encode(), b"stale-isbn"))
+    assert b"stale-isbn" in archive.get(ncx), "doctoring the fixture failed"
+
+    written = sync_ncx_identifier(archive, package)
+    assert written == identifier
+    assert identifier.encode() in archive.get(ncx)
+    assert b"stale-isbn" not in archive.get(ncx)
+
+
+def test_ncx_sync_is_a_no_op_when_already_correct(sample_epub) -> None:
+    """Returning None keeps `changed` false, so an untouched OPF is not rewritten."""
+    from joven.epub.archive import EpubArchive
+    from joven.epub.package import read_package
+    from joven.render.upgrade import sync_ncx_identifier
+
+    archive = EpubArchive.read(sample_epub)
+    assert sync_ncx_identifier(archive, read_package(archive)) is None

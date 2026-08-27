@@ -199,16 +199,35 @@ _FEATURE_NAMESPACES = {
     "mathml": "http://www.w3.org/1998/Math/MathML",
 }
 
+# Features identified by an element rather than a namespace declaration.
+#
+# `scripted` matters for a reason specific to this project's output: **kepubify
+# injects `<script src=".../kobo.js">` into every document** and does not update
+# the manifest. A book that has already been through kepubify therefore arrives
+# with one OPF-014 per document — 19 of the 20 errors in the EPUB 3 packaging of
+# The Crossing. Declaring the property is the whole fix; the script itself is
+# Kobo's and stays.
+#
+# `<script` cannot match escaped prose (`&lt;script`), so a substring test is
+# safe here and avoids parsing every document a second time.
+_FEATURE_MARKERS = {
+    "scripted": b"<script",
+}
+
 
 def declare_manifest_properties(
     archive: EpubArchive, opf: etree._Element, opf_base: str
 ) -> list[str]:
-    """Add ``properties="svg"`` / ``"mathml"`` where a document uses them.
+    """Declare the EPUB 3 manifest properties a document's content requires.
 
-    The book's cover page embeds SVG, which EPUB 3 requires the manifest to
-    declare:
+    Covers ``svg`` and ``mathml`` (detected by namespace) and ``scripted``
+    (detected by a script element). All three surface the same way when missing:
 
         ERROR(OPF-014): The property "svg" should be declared in the OPF file.
+
+    Repairing rather than tolerating these matters because we are the ones
+    declaring EPUB 3: a gate that reports known-failing output stops being a
+    gate, and a real regression would hide in the noise.
     """
     declared: list[str] = []
     manifest = opf.find(f"{{{OPF_NS}}}manifest")
@@ -228,9 +247,48 @@ def declare_manifest_properties(
             if namespace.encode() in body and feature not in existing:
                 existing.add(feature)
                 declared.append(f"{archive_path}:{feature}")
+        for feature, marker in _FEATURE_MARKERS.items():
+            if marker in body and feature not in existing:
+                existing.add(feature)
+                declared.append(f"{archive_path}:{feature}")
         if existing:
             item.set("properties", " ".join(sorted(existing)))
     return declared
+
+
+def sync_ncx_identifier(archive: EpubArchive, package: Package) -> str | None:
+    """Make the legacy NCX's ``dtb:uid`` agree with the OPF's ``dc:identifier``.
+
+        ERROR(RSC-005): NCX identifier ("978-0-307-76246-7") does not match
+        OPF identifier ("urn:uuid:f013d236-...")
+
+    Publishers hit this by assigning a UUID in the OPF while the NCX keeps the
+    ISBN it was generated with. The OPF is authoritative in EPUB 3 — the NCX is
+    retained only for backward compatibility — so the NCX is the side that moves.
+
+    Returns the identifier written, or None if there was nothing to do. Touches no
+    navigation points and no prose, so the text invariant is unaffected.
+    """
+    ncx_path = next((h for h in package.manifest.values() if h.endswith(".ncx")), None)
+    if ncx_path is None or ncx_path not in archive:
+        return None
+
+    identifier = package.metadata.get("identifier")
+    if not identifier:
+        return None
+
+    original = archive.get(ncx_path)
+    tree = etree.fromstring(original)
+    changed = False
+    for meta in tree.iter(f"{{{NCX_NS}}}meta"):
+        if meta.get("name") == "dtb:uid" and meta.get("content") != identifier:
+            meta.set("content", identifier)
+            changed = True
+    if not changed:
+        return None
+
+    archive.replace(ncx_path, etree.tostring(tree, xml_declaration=True, encoding="utf-8"))
+    return identifier
 
 
 def modernize_metadata(metadata: etree._Element) -> list[str]:
@@ -309,6 +367,9 @@ def upgrade_package(archive: EpubArchive, package: Package) -> bool:
         changed = True
 
     if prune_stale_guide(archive, opf, opf_base):
+        changed = True
+
+    if sync_ncx_identifier(archive, package):
         changed = True
 
     # EPUB 3 requires exactly one manifest item with properties="nav"
