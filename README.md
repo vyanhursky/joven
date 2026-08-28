@@ -274,18 +274,42 @@ Three external tools do work Python should not:
 | [`epubcheck`](https://www.w3.org/publishing/epubcheck/) | The reference EPUB validator — the external gate on our output |
 
 **Bring your own EPUB.** Joven reads a file you already have; it does not fetch,
-share, or unlock anything, and it refuses DRM-protected files outright.
+share, or unlock anything, and it refuses DRM-protected files outright. Books that
+merely *obfuscate* an embedded font are read normally — that is not DRM, and the
+scrambled font is carried through untouched.
 
 ## Install
 
+The three external binaries first:
+
 ```bash
 brew install epubcheck kepubify ollama
-python3.13 -m venv .venv
-./.venv/bin/pip install -e '.[dev]'
+```
 
-ollama serve &            # once
+Then the tool, into its own isolated environment:
+
+```bash
+uv tool install joven-ebook-annotator
+```
+
+`pipx install joven-ebook-annotator` does the same thing if you have pipx instead.
+Both pull prebuilt wheels — worth knowing that `lingua` carries its language models
+inside the wheel, so this step moves about 170 MB.
+
+Then the model, once:
+
+```bash
+ollama serve &            # leave running
 ollama pull qwen3:8b      # 5.2 GB
 ```
+
+> There is no Homebrew formula. One dependency (`lingua-language-detector`)
+> publishes no source distribution at all — only per-platform wheels — which a
+> Homebrew Python formula cannot consume without hand-pinned wheel URLs per
+> architecture and per CPython minor version. Two commands that work beat one
+> command that breaks on the next `python@` bump.
+
+To work on the code rather than use it, see [Development](#development).
 
 ## Use
 
@@ -371,7 +395,13 @@ Known limitations, and what the project has and has not proven, are in
 ## Development
 
 ```bash
-./.venv/bin/pytest                       # 353 tests, synthetic fixtures only
+git clone https://github.com/vyanhursky/joven && cd joven
+python3.13 -m venv .venv
+./.venv/bin/pip install -e '.[dev]'
+```
+
+```bash
+./.venv/bin/pytest                       # 369 tests, synthetic fixtures only
 ./.venv/bin/ruff check src tests tools
 
 # opt in to the real-book tests (the book is never committed)
@@ -402,6 +432,7 @@ python tools/bench_pipeline.py           # the two-tier system that actually shi
 | [docs/model-selection.md](docs/model-selection.md) | The local-model benchmark: why `qwen3:8b` |
 | [docs/anatomy-of-a-call.md](docs/anatomy-of-a-call.md) | What the local model is asked, what it may answer, and the gates that check it |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Tracing a missing footnote, improving translation quality, debug flags, and Kobo quirks |
+| [docs/releasing.md](docs/releasing.md) | Cutting a release: the one-time PyPI trusted-publisher setup, and what CI does with a tag |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes and known limitations |
 
 ## Licence

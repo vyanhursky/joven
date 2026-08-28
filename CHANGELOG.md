@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.0.0b2 — 2026-08-28
+
+### Fixed
+
+- **Books using HTML named entities no longer fail to parse.** XML defines five
+  entity names; XHTML in the wild uses the full HTML set, so any book containing
+  `&nbsp;`, `&mdash;` or `&rsquo;` was refused with `Entity 'nbsp' not defined`
+  and a traceback. The Knopf edition of *The Crossing* happens to use none, which
+  is why one book was enough to hide this. Named entities are now resolved before
+  parsing, on both sides of the text-preservation comparison so the invariant is
+  unaffected.
+- **Font obfuscation is no longer misreported as DRM.** `META-INF/encryption.xml`
+  is how the IDPF and Adobe font-obfuscation schemes declare themselves as well as
+  how real DRM does, and unencumbered trade EPUBs carry it routinely. Refusing on
+  the file's presence rejected those books with advice to strip DRM that was never
+  applied. The check now reads the encryption algorithm and refuses only genuine
+  encryption, naming the resources it cannot read.
+- An unparseable document reports an error and exits, instead of raising a
+  traceback out of `inspect`, `detect` or `add`.
+
+### Added
+
+- **Releases publish to PyPI from a tag**, via Trusted Publishing — no API token
+  in repository secrets. The install path becomes `uv tool install
+  joven-ebook-annotator` instead of a venv and an editable checkout. A guard fails
+  the build when a tag disagrees with the version in `pyproject.toml`, because
+  PyPI will not let a version number be reused. See
+  [docs/releasing.md](docs/releasing.md).
+- **`joven detect --resume TRACE`.** A full run is 73 minutes and the sidecar was
+  written only at the end, so an interruption at minute 70 lost all of it. The
+  trace is now flushed per record and can be replayed: every model answer it holds
+  is reused and only unreached segments cost anything. Tier 1 and the suppression
+  gates still run over the whole book, so a resumed run reflects the current code;
+  recorded errors are retried rather than inherited.
+
 ## v1.0.0b1 — 2026-08-19
 
 First public release. Beta because it has been proven on exactly one book by
