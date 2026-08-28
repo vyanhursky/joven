@@ -307,6 +307,18 @@ threaded, $0. It writes `annotations.json` (the sidecar you will edit) and, with
 `--trace`, a JSONL record of every segment it looked at. Re-running it is safe —
 your review decisions are sticky.
 
+The trace is also the run's recovery log: it is flushed a record at a time, so an
+interrupted run loses nothing that the model already answered.
+
+```bash
+joven detect book.epub -o annotations.json --trace trace.jsonl --resume trace.jsonl
+```
+
+`--resume` reuses every model answer the trace already holds and pays only for the
+segments the previous run never reached. Tier 1 and every suppression gate still run
+over the whole book, so a resumed run picks up threshold changes rather than
+replaying stale conclusions; recorded *errors* are retried rather than inherited.
+
 **`review`** opens a local page listing every annotation with the surrounding prose
 and the Spanish highlighted. Approve, edit, or reject (`a`/`r`/`e`); each decision
 writes straight to the sidecar the moment you make it, so quitting mid-review loses

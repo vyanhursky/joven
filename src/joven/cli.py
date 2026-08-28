@@ -15,7 +15,7 @@ from .kepub import KepubError
 from .model import Annotation, Sidecar, Status, normalize, occurrence_indices
 from .render import RenderError, render_epub
 from .review import serve as serve_review
-from .trace import Outcome, Tracer, load_trace
+from .trace import Outcome, Tracer, load_trace, reusable_answers
 from .translate import get_translator, installed_models, ollama_available
 from .verify import verify as run_verify
 
@@ -218,11 +218,22 @@ def detect(
     merge: bool = typer.Option(
         True, "--merge/--overwrite", help="Merge into an existing sidecar, keeping human edits"
     ),
+    resume: Path | None = typer.Option(
+        None,
+        "--resume",
+        exists=True,
+        dir_okay=False,
+        help="Reuse model answers from an earlier trace instead of re-asking",
+    ),
 ) -> None:
     """Detect foreign-language passages and write an annotations sidecar.
 
     Tier 1 (statistical) runs on every sentence; only the abstention band reaches
     the LLM. Use --trace to see exactly what happened to every segment.
+
+    A run that was interrupted can be picked up with --resume pointed at its
+    trace: every model answer already recorded is reused, and only the segments
+    it never reached cost anything.
     """
     _load(epub)
 
@@ -253,6 +264,28 @@ def detect(
             fg=typer.colors.YELLOW,
         )
 
+    # Read the resume trace *before* the tracer opens: --trace truncates, and
+    # pointing both at one file is the obvious way to run this.
+    recorded = {}
+    if resume is not None:
+        recorded = reusable_answers(load_trace(resume))
+        if not recorded:
+            typer.secho(
+                f"warning: {resume} holds no reusable model answers — "
+                "running as a fresh detection",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+        else:
+            typer.echo(f"resuming: {len(recorded):,} model answers recalled from {resume}")
+        if trace is None:
+            typer.secho(
+                "warning: --resume without --trace, so this run records nothing "
+                "and an interruption would lose it again",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+
     with Tracer(path=trace) as tracer:
         try:
             sidecar, result = run_detect(
@@ -261,6 +294,7 @@ def detect(
                 translator=translator,
                 tracer=tracer,
                 limit=limit,
+                resume=recorded,
             )
         except EpubError as exc:
             _fail(exc)
@@ -272,6 +306,8 @@ def detect(
     typer.echo(report)
     typer.echo(f"\n  paragraphs scanned    {result.paragraphs_scanned:,}")
     typer.echo(f"  annotations           {len(result.annotations):,}")
+    if result.llm_recalled:
+        typer.echo(f"  recalled from trace   {result.llm_recalled:,}  (no model call)")
 
     if band:
         typer.secho("\n  least-confident escalations (tune thresholds here):", bold=True)

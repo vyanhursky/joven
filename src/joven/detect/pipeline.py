@@ -22,8 +22,9 @@ from ..epub.archive import EpubArchive
 from ..epub.document import iter_text_units
 from ..epub.package import read_package
 from ..model import Annotation, Sidecar, file_sha256, occurrence_indices
-from ..trace import Decision, Outcome, Tracer
+from ..trace import Decision, Outcome, ResumeKey, Tracer
 from ..translate import Translator, is_normalization
+from ..translate import Verdict as LLMVerdict
 from .segment import Segment, merge_adjacent, segment
 from .triage import Triager, Verdict, is_embedded_loanword
 
@@ -36,6 +37,8 @@ class DetectResult:
     paragraphs_scanned: int = 0
     segments_scanned: int = 0
     merge_stats: dict[str, int] = field(default_factory=dict)
+    llm_recalled: int = 0
+    """Escalations answered from a prior trace instead of the model."""
 
 
 def _context_for(units: list, position: int) -> str:
@@ -74,6 +77,30 @@ def _narrow(seg: Segment, spanish_text: str) -> Segment:
     return Segment(text=candidate, start=start, end=start + len(candidate), index=seg.index)
 
 
+def _recall(
+    recorded: dict[ResumeKey, Decision], decision: Decision
+) -> LLMVerdict | None:
+    """The model's prior answer for this exact segment, if a trace holds one.
+
+    Matched on address *and* text: the address alone would hand a stale answer to
+    a re-edited book, and silently translating one paragraph as another is a worse
+    failure than spending the 1.7 seconds again.
+
+    Reported with zero latency, because this run did not spend it.
+    """
+    prior = recorded.get((decision.href, decision.para_index, decision.segment_index))
+    if prior is None or prior.text != decision.text:
+        return None
+    return LLMVerdict(
+        is_spanish=bool(prior.tier2_is_spanish),
+        spanish_text=prior.tier2_spanish_text,
+        translation=prior.tier2_translation,
+        model=prior.tier2_model,
+        latency_s=0.0,
+        raw=prior.tier2_raw,
+    )
+
+
 def detect(
     source: str | Path,
     *,
@@ -81,15 +108,22 @@ def detect(
     translator: Translator | None = None,
     tracer: Tracer | None = None,
     limit: int | None = None,
+    resume: dict[ResumeKey, Decision] | None = None,
 ) -> tuple[Sidecar, DetectResult]:
     """Scan a book and produce candidate annotations plus a full decision trace.
 
     ``translator=None`` runs Tier 1 only — instant, free, and enough to answer
     "would this paragraph have been escalated?".
+
+    ``resume`` supplies previously recorded model answers (see
+    :func:`joven.trace.reusable_answers`). Tier 1 and every gate still run over
+    the whole book — only the model calls are skipped — so a resumed run picks up
+    threshold and gate changes rather than replaying stale conclusions.
     """
     source = Path(source)
     triager = triager or Triager()
     tracer = tracer or Tracer(keep_in_memory=True)
+    recorded = resume or {}
 
     archive = EpubArchive.read(source)
     package = read_package(archive)
@@ -154,9 +188,13 @@ def detect(
                         decision.outcome = Outcome.ANNOTATED
                         tracer.record(decision)
                         continue
-                    if context is None:
-                        context = _context_for(units, position)
-                    verdict = translator.translate(seg.text, context)
+                    verdict = _recall(recorded, decision)
+                    if verdict is None:
+                        if context is None:
+                            context = _context_for(units, position)
+                        verdict = translator.translate(seg.text, context)
+                    else:
+                        result.llm_recalled += 1
                     decision.tier2_used = True
                     decision.tier2_model = verdict.model
                     decision.tier2_latency_s = verdict.latency_s
@@ -189,9 +227,13 @@ def detect(
                     tracer.record(decision)
                     continue
 
-                if context is None:
-                    context = _context_for(units, position)
-                verdict = translator.adjudicate(seg.text, context)
+                verdict = _recall(recorded, decision)
+                if verdict is None:
+                    if context is None:
+                        context = _context_for(units, position)
+                    verdict = translator.adjudicate(seg.text, context)
+                else:
+                    result.llm_recalled += 1
                 decision.tier2_used = True
                 decision.tier2_model = verdict.model
                 decision.tier2_latency_s = verdict.latency_s

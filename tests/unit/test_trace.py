@@ -160,3 +160,113 @@ def test_no_translator_still_produces_annotations(sample_epub: Path) -> None:
     """Tier-1-only mode is a diagnostic, so empty translations are acceptable there."""
     sidecar, _ = detect(sample_epub, translator=None)
     assert sidecar.annotations
+
+
+# ------------------------------------------------------------------- resume
+
+
+def test_trace_is_flushed_per_record(tmp_path: Path) -> None:
+    """The trace is the resume log, so it must be on disk before the run ends.
+
+    Buffered, an interruption at minute 70 of 73 loses every model answer.
+    """
+    from joven.trace import Decision, Tracer
+
+    path = tmp_path / "trace.jsonl"
+    with Tracer(path=path) as tracer:
+        tracer.record(Decision(href="a.xhtml", para_index=1, segment_index=0,
+                               text="Se fué.", start=0, end=7))
+        assert path.read_text(encoding="utf-8").count("\n") == 1, "not yet on disk"
+
+
+def test_reusable_answers_keeps_only_model_answers() -> None:
+    from joven.trace import Decision, reusable_answers
+
+    tier1_only = Decision(href="a.xhtml", para_index=1, segment_index=0,
+                          text="He rode on.", start=0, end=11)
+    answered = Decision(href="a.xhtml", para_index=2, segment_index=0,
+                        text="Se fué.", start=0, end=7,
+                        tier2_used=True, tier2_translation="He is gone.")
+
+    index = reusable_answers([tier1_only, answered])
+    assert list(index) == [("a.xhtml", 2, 0)]
+
+
+def test_reusable_answers_drops_errors_so_they_are_retried() -> None:
+    """A run that died probably died here; resuming must not inherit the failure."""
+    from joven.trace import Decision, reusable_answers
+
+    failed = Decision(href="a.xhtml", para_index=2, segment_index=0,
+                      text="Se fué.", start=0, end=7,
+                      tier2_used=True, tier2_error="ReadTimeout: ...")
+    assert reusable_answers([failed]) == {}
+
+
+def test_reusable_answers_prefers_the_latest_record() -> None:
+    from joven.trace import Decision, reusable_answers
+
+    def at(translation: str) -> Decision:
+        return Decision(href="a.xhtml", para_index=2, segment_index=0,
+                        text="Se fué.", start=0, end=7,
+                        tier2_used=True, tier2_translation=translation)
+
+    index = reusable_answers([at("old"), at("new")])
+    assert index[("a.xhtml", 2, 0)].tier2_translation == "new"
+
+
+def test_resume_reuses_answers_instead_of_calling_the_model(
+    sample_epub: Path, tmp_path: Path
+) -> None:
+    """The whole point: a resumed run must not pay for work already done."""
+    from joven.detect.pipeline import detect
+    from joven.trace import Tracer, reusable_answers
+    from joven.translate import StubTranslator, Verdict
+
+    class CountingTranslator(StubTranslator):
+        calls: int = 0
+
+        def adjudicate(self, text: str, context: str = "") -> Verdict:
+            type(self).calls += 1
+            return super().adjudicate(text, context)
+
+        def translate(self, text: str, context: str = "") -> Verdict:
+            type(self).calls += 1
+            return super().translate(text, context)
+
+    first_trace = tmp_path / "first.jsonl"
+    with Tracer(path=first_trace) as tracer:
+        _, first = detect(sample_epub, translator=CountingTranslator(), tracer=tracer)
+    assert CountingTranslator.calls > 0
+    spent = CountingTranslator.calls
+
+    CountingTranslator.calls = 0
+    _, second = detect(
+        sample_epub,
+        translator=CountingTranslator(),
+        resume=reusable_answers(load_trace(first_trace)),
+    )
+
+    assert CountingTranslator.calls == 0, "resumed run still called the model"
+    assert second.llm_recalled == spent
+    # and the result is the same book, not a degraded one
+    assert [a.id for a in second.annotations] == [a.id for a in first.annotations]
+
+
+def test_resume_ignores_answers_whose_text_no_longer_matches(
+    sample_epub: Path, tmp_path: Path
+) -> None:
+    """A stale answer at the right address is worse than paying for a fresh one."""
+    from joven.detect.pipeline import detect
+    from joven.trace import Tracer, reusable_answers
+    from joven.translate import StubTranslator
+
+    trace_path = tmp_path / "t.jsonl"
+    with Tracer(path=trace_path) as tracer:
+        detect(sample_epub, translator=StubTranslator(), tracer=tracer)
+
+    recorded = reusable_answers(load_trace(trace_path))
+    for decision in recorded.values():
+        decision.text = "something else entirely"
+
+    _, result = detect(sample_epub, translator=StubTranslator(), resume=recorded)
+    assert result.llm_recalled == 0

@@ -110,6 +110,11 @@ class Tracer:
     def record(self, decision: Decision) -> None:
         if self._handle is not None:
             self._handle.write(decision.to_json() + "\n")  # type: ignore[attr-defined]
+            # Flushed per record, which is what makes the trace a resume log rather
+            # than a post-mortem. A full book is 73 minutes of LLM calls; buffered
+            # writes mean a Ctrl-C or a closed lid at minute 70 loses the lot. The
+            # cost is one write syscall against a ~1.7s model call.
+            self._handle.flush()  # type: ignore[attr-defined]
         if self.keep_in_memory:
             self.records.append(decision)
 
@@ -179,3 +184,29 @@ def load_trace(path: str | Path) -> list[Decision]:
             if line.strip():
                 decisions.append(Decision(**json.loads(line)))
     return decisions
+
+
+# ------------------------------------------------------------------- resume
+
+ResumeKey = tuple[str, int, int]
+
+
+def reusable_answers(decisions: list[Decision]) -> dict[ResumeKey, Decision]:
+    """Index a trace by segment address, keeping only the LLM answers worth reusing.
+
+    Two exclusions carry the meaning:
+
+    * segments the model never saw are left out — recomputing Tier 1 is instant,
+      and it should pick up any gate or threshold change since the last run;
+    * **recorded errors are left out**, so a resumed run retries them. A run that
+      died mid-book usually died for a reason, and the failures nearest the end
+      are the ones most likely to have been the symptom.
+
+    Later records win, so a trace appended across several runs resolves to the
+    most recent answer for each segment.
+    """
+    return {
+        (d.href, d.para_index, d.segment_index): d
+        for d in decisions
+        if d.tier2_used and not d.tier2_error
+    }
