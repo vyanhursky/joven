@@ -182,6 +182,60 @@ and rendering is a pure function of (original EPUB + sidecar). Corrections mean
 editing the sidecar and re-rendering — never re-translating — and re-running
 detection merges into your edits instead of clobbering them.
 
+### Inside one Tier-2 call
+
+Tier 2 is not a translation step with a question bolted on. It answers three
+things at once — **is this Spanish**, **which part of it is Spanish**, and **what
+does it mean** — which is why it is an instruct model and not a translation
+engine. An NMT engine can only answer the third, and would cheerfully "translate"
+`Yes mam.`
+
+```mermaid
+flowchart TB
+    subgraph REQUEST["one /api/chat request to Ollama"]
+        direction TB
+        SYS["SYSTEM<br>the task, the JSON contract, and a warning<br>that McCarthy's dialect English is English"]
+        FS["6 FEW-SHOT TURNS<br>one per mixing pattern, plus two dialect traps<br>added after a traced run exposed them"]
+        USR["USER<br>up to 400 characters of preceding prose, fenced<br>and marked do-not-translate, then the paragraph"]
+        SYS --- FS --- USR
+    end
+
+    USR --> MODEL["qwen3:8b · temperature 0 · thinking off<br>reply constrained to a JSON schema"]
+    MODEL --> OUT["is_spanish · spanish_text · translation"]
+
+    OUT --> G1{"is the translation<br>just the source tidied up?"}
+    G1 -- yes --> VETO["vetoed — a footnote<br>that teaches nothing"]
+    G1 -- no --> G2{"one Spanish word<br>inside English prose?"}
+    G2 -- yes --> LOAN["suppressed —<br>embedded loanword"]
+    G2 -- no --> KEEP["annotation, span narrowed<br>to spanish_text"]
+
+    VETO --> TRACE[("trace.jsonl<br>every outcome, with the raw reply")]
+    LOAN --> TRACE
+    KEEP --> TRACE
+
+    classDef keep fill:#e6f4ea,stroke:#2e7d4f,stroke-width:2px,color:#111
+    classDef drop fill:#f2f2f2,stroke:#999,color:#444
+    classDef store fill:#fff4e0,stroke:#b8860b,stroke-width:2px,color:#111
+    class KEEP keep
+    class VETO,LOAN drop
+    class TRACE store
+```
+
+**There are two prompts, not one**, and which runs depends on what Tier 1 already
+decided. The split was forced by a bug in each direction:
+
+| Tier 1 said | Prompt | Because |
+|---|---|---|
+| abstained (the band) | **adjudicate** — is this Spanish, and if so which part? | The genuine open question |
+| confident Spanish | **translate only** — this *is* Spanish; do not second-guess it | A combined prompt let the model veto Tier 1's correct calls. It labels `Dieciseis.` English. |
+
+Skipping the model entirely for Tier-1 accepts was the first implementation, and
+it shipped annotations with **no translation at all** — blank popups on the
+device.
+
+The prompts themselves, the context-bleed problem, a real call from the trace, and
+the three gates in detail: [docs/anatomy-of-a-call.md](docs/anatomy-of-a-call.md).
+
 ### The components
 
 `src/joven/` is about 4,500 lines. The pieces map onto the pipeline above:
@@ -334,6 +388,7 @@ python tools/bench_pipeline.py           # the two-tier system that actually shi
 |---|---|
 | [DESIGN.md](DESIGN.md) | Why the architecture is shaped this way — the measurements behind every decision, what the device tests overturned, and the work deliberately left undone |
 | [docs/model-selection.md](docs/model-selection.md) | The local-model benchmark: why `qwen3:8b` |
+| [docs/anatomy-of-a-call.md](docs/anatomy-of-a-call.md) | What the local model is asked, what it may answer, and the gates that check it |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Tracing a missing footnote, improving translation quality, debug flags, and Kobo quirks |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes and known limitations |
 
