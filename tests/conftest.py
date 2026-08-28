@@ -178,11 +178,58 @@ def entity_epub(tmp_path: Path) -> Path:
     )
 
 
+def _encryption_xml(*entries: tuple[str, str]) -> str:
+    """An ``encryption.xml`` declaring ``(algorithm, resource)`` pairs."""
+    blocks = "\n".join(
+        f"""  <enc:EncryptedData>
+    <enc:EncryptionMethod Algorithm="{algorithm}"/>
+    <enc:CipherData><enc:CipherReference URI="{resource}"/></enc:CipherData>
+  </enc:EncryptedData>"""
+        for algorithm, resource in entries
+    )
+    return (
+        '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container"\n'
+        '            xmlns:enc="http://www.w3.org/2001/04/xmlenc#">\n'
+        f"{blocks}\n</encryption>\n"
+    )
+
+
 @pytest.fixture
 def drm_epub(tmp_path: Path) -> Path:
+    """Genuine content encryption — AES over a spine document."""
     return build_epub(
         tmp_path / "drm.epub",
-        extra={"META-INF/encryption.xml": '<encryption xmlns="urn:x"/>'},
+        extra={
+            "META-INF/encryption.xml": _encryption_xml(
+                ("http://www.w3.org/2001/04/xmlenc#aes128-cbc", "OEBPS/part1.xhtml")
+            )
+        },
+    )
+
+
+@pytest.fixture
+def idpf_obfuscated_epub(tmp_path: Path) -> Path:
+    """Font obfuscation, IDPF scheme — not DRM, and must be accepted."""
+    return build_epub(
+        tmp_path / "idpf-fonts.epub",
+        extra={
+            "META-INF/encryption.xml": _encryption_xml(
+                ("http://www.idpf.org/2008/embedding", "OEBPS/fonts/Sabon.otf")
+            )
+        },
+    )
+
+
+@pytest.fixture
+def adobe_obfuscated_epub(tmp_path: Path) -> Path:
+    """Font obfuscation, Adobe scheme — not DRM, and must be accepted."""
+    return build_epub(
+        tmp_path / "adobe-fonts.epub",
+        extra={
+            "META-INF/encryption.xml": _encryption_xml(
+                ("http://ns.adobe.com/pdf/enc#RC", "OEBPS/fonts/Sabon.otf")
+            )
+        },
     )
 
 

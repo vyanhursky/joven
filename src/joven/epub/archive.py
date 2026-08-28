@@ -25,9 +25,26 @@ EPUB_MIMETYPE = b"application/epub+zip"
 ENCRYPTION_PATH = "META-INF/encryption.xml"
 CONTAINER_PATH = "META-INF/container.xml"
 
+XMLENC_NS = "http://www.w3.org/2001/04/xmlenc#"
+
+# `encryption.xml` is not a DRM marker. It is also how the two font-obfuscation
+# schemes declare themselves, and unencumbered trade EPUBs carry it routinely to
+# scramble an embedded typeface. Refusing on the file's presence rejects those
+# books with advice to strip DRM that was never there.
+#
+# The honest test is the algorithm. Obfuscation is a fixed pair of well-known
+# URIs; everything else -- AES and friends -- is real encryption we cannot read
+# through. Testing the algorithm rather than guessing from the resource path also
+# avoids having to decide what "looks like a font", and keeps this layer from
+# needing to know what the spine is.
+OBFUSCATION_ALGORITHMS = frozenset({
+    "http://www.idpf.org/2008/embedding",  # IDPF / EPUB font obfuscation
+    "http://ns.adobe.com/pdf/enc#RC",      # Adobe font obfuscation
+})
+
 
 class EpubError(Exception):
-    """Raised when an archive is not a usable EPUB."""
+    """Raised when an EPUB, or something inside it, is not usable."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,8 +117,40 @@ class EpubArchive:
         if CONTAINER_PATH not in names:
             raise EpubError(f"missing {CONTAINER_PATH} — not an EPUB")
         if ENCRYPTION_PATH in names:
+            self._validate_encryption(self.get(ENCRYPTION_PATH))
+
+    def _validate_encryption(self, data: bytes) -> None:
+        """Refuse real encryption; carry obfuscated fonts through untouched.
+
+        Obfuscated fonts need no special handling here — every entry this tool
+        does not annotate is copied out byte for byte, so a scrambled font stays
+        exactly as scrambled as the reader expects it to be.
+        """
+        from lxml import etree  # local: keeps the zip layer importable without lxml
+
+        try:
+            root = etree.fromstring(data, parser=etree.XMLParser(resolve_entities=False))
+        except etree.XMLSyntaxError as exc:
+            raise EpubError(f"{ENCRYPTION_PATH} is present but unreadable: {exc}") from exc
+
+        encrypted: list[str] = []
+        for element in root.iter(f"{{{XMLENC_NS}}}EncryptedData"):
+            method = element.find(f"{{{XMLENC_NS}}}EncryptionMethod")
+            algorithm = method.get("Algorithm", "") if method is not None else ""
+            if algorithm in OBFUSCATION_ALGORITHMS:
+                continue
+            reference = element.find(
+                f"{{{XMLENC_NS}}}CipherData/{{{XMLENC_NS}}}CipherReference"
+            )
+            target = reference.get("URI", "?") if reference is not None else "?"
+            encrypted.append(f"{target} ({algorithm or 'unspecified algorithm'})")
+
+        if encrypted:
+            listed = "\n         ".join(encrypted[:5])
+            more = f"\n         ... and {len(encrypted) - 5} more" if len(encrypted) > 5 else ""
             raise EpubError(
-                f"{ENCRYPTION_PATH} present — this EPUB appears to be DRM-encrypted. "
+                "this EPUB is encrypted — the following resources cannot be read:\n"
+                f"         {listed}{more}\n"
                 "Remove the DRM first; this tool will not produce usable output."
             )
 

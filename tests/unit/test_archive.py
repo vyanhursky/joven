@@ -92,8 +92,67 @@ def test_write_is_atomic_leaves_no_partial(sample_epub: Path, tmp_path: Path) ->
 
 
 def test_rejects_drm_encrypted(drm_epub: Path) -> None:
-    with pytest.raises(EpubError, match="DRM"):
+    with pytest.raises(EpubError, match="DRM") as caught:
         EpubArchive.read(drm_epub)
+    # naming the resource is what makes the message actionable
+    assert "OEBPS/part1.xhtml" in str(caught.value)
+
+
+def test_accepts_idpf_font_obfuscation(idpf_obfuscated_epub: Path) -> None:
+    """Obfuscated fonts are not DRM — the book is perfectly readable.
+
+    `encryption.xml` is shared by both purposes, so keying on the file's presence
+    rejected ordinary trade EPUBs with advice to strip DRM that was never applied.
+    """
+    archive = EpubArchive.read(idpf_obfuscated_epub)
+    assert "OEBPS/part1.xhtml" in archive
+
+
+def test_accepts_adobe_font_obfuscation(adobe_obfuscated_epub: Path) -> None:
+    archive = EpubArchive.read(adobe_obfuscated_epub)
+    assert "OEBPS/part1.xhtml" in archive
+
+
+def test_obfuscated_fonts_survive_the_roundtrip_untouched(
+    idpf_obfuscated_epub: Path, tmp_path: Path
+) -> None:
+    """We never deobfuscate, so the reader gets back exactly what it expects."""
+    original = EpubArchive.read(idpf_obfuscated_epub)
+    out = tmp_path / "out.epub"
+    original.write(out)
+    produced = EpubArchive.read(out)
+    assert produced.get("META-INF/encryption.xml") == original.get("META-INF/encryption.xml")
+
+
+def test_rejects_mixed_obfuscation_and_real_encryption(tmp_path: Path) -> None:
+    """One obfuscated font does not excuse an encrypted chapter."""
+    from tests.conftest import _encryption_xml, build_epub
+
+    book = build_epub(
+        tmp_path / "mixed.epub",
+        extra={
+            "META-INF/encryption.xml": _encryption_xml(
+                ("http://www.idpf.org/2008/embedding", "OEBPS/fonts/Sabon.otf"),
+                ("http://www.w3.org/2001/04/xmlenc#aes128-cbc", "OEBPS/part2.xhtml"),
+            )
+        },
+    )
+    with pytest.raises(EpubError, match="encrypted") as caught:
+        EpubArchive.read(book)
+    assert "OEBPS/part2.xhtml" in str(caught.value)
+    assert "Sabon.otf" not in str(caught.value), "the font is not the problem"
+
+
+def test_rejects_unreadable_encryption_manifest(tmp_path: Path) -> None:
+    """Refuse rather than guess when we cannot tell what is encrypted."""
+    from tests.conftest import build_epub
+
+    book = build_epub(
+        tmp_path / "broken-enc.epub",
+        extra={"META-INF/encryption.xml": "<encryption><unclosed></encryption>"},
+    )
+    with pytest.raises(EpubError, match="unreadable"):
+        EpubArchive.read(book)
 
 
 def test_rejects_non_zip(tmp_path: Path) -> None:
