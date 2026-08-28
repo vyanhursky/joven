@@ -66,8 +66,9 @@
 **Joven is a command-line tool that finds the untranslated Spanish in an English
 novel and inserts tappable translation footnotes.** You give it an EPUB you own;
 it gives you back an annotated copy for your e-reader, with the prose byte-for-byte
-unchanged. It was written for Cormac McCarthy's *The Crossing* and works well on
-his other westerns.
+unchanged. It was written for Cormac McCarthy's *The Crossing*, and has since been
+run end to end on *All the Pretty Horses* and — as a control — on *Suttree*, which
+has no Spanish in it. See [Results](#results).
 
 Everything runs on your machine against a local model: no API key, no per-book
 cost, nothing uploaded.
@@ -121,7 +122,8 @@ reads exactly as the author set it down.
 - **It stays on your machine.** A local `qwen3:8b` does the translating — 73
   minutes for the whole novel, $0, and the book never leaves the laptop.
 - **Precision over recall.** A spurious footnote on `Go on.` is worse than a missed
-  one, so ambiguous cases escalate to the model rather than guess.
+  one, so ambiguous cases escalate to the model rather than guess. Measured on a
+  McCarthy novel with no Spanish in it: six false positives in 177,000 words.
 
 ## How it works
 
@@ -280,34 +282,57 @@ scrambled font is carried through untouched.
 
 ## Install
 
-The three external binaries first:
+**1. `uv`**, which manages the isolated environment the tool lives in:
+
+```bash
+brew install uv
+```
+
+Any other install route works too — see [the uv docs](https://docs.astral.sh/uv/getting-started/installation/).
+
+**2. The three external binaries** (what each is for is in the table above):
 
 ```bash
 brew install epubcheck kepubify ollama
 ```
 
-Then the tool, into its own isolated environment:
+**3. Joven itself:**
 
 ```bash
 uv tool install joven-ebook-annotator
 ```
 
-`pipx install joven-ebook-annotator` does the same thing if you have pipx instead.
-Both pull prebuilt wheels — worth knowing that `lingua` carries its language models
-inside the wheel, so this step moves about 170 MB.
+This installs into `~/.local/bin`, which is often not on your `PATH`. If
+`joven --help` comes back with *command not found*, add it once:
 
-Then the model, once:
+```bash
+uv tool update-shell
+```
+
+That edits your shell profile, so open a new terminal afterwards. `pipx install
+joven-ebook-annotator` works the same way if you would rather use pipx.
+
+Both routes pull prebuilt wheels. Worth knowing that `lingua` carries its language
+models inside the wheel, so this step moves about 170 MB.
+
+**4. The model**, once:
 
 ```bash
 ollama serve &            # leave running
 ollama pull qwen3:8b      # 5.2 GB
 ```
 
-> There is no Homebrew formula. One dependency (`lingua-language-detector`)
-> publishes no source distribution at all — only per-platform wheels — which a
-> Homebrew Python formula cannot consume without hand-pinned wheel URLs per
-> architecture and per CPython minor version. Two commands that work beat one
-> command that breaks on the next `python@` bump.
+Check it all landed:
+
+```bash
+joven inspect book.epub
+```
+
+> There is no Homebrew formula for Joven itself. One dependency
+> (`lingua-language-detector`) publishes no source distribution at all — only
+> per-platform wheels — which a Homebrew Python formula cannot consume without
+> hand-pinned wheel URLs per architecture and per CPython minor version. Two
+> commands that work beat one command that breaks on the next `python@` bump.
 
 To work on the code rather than use it, see [Development](#development).
 
@@ -375,19 +400,35 @@ For tuning, tracing, and the debug flags, see
 
 ## Results
 
-Working end to end on a real book: lossless round-trip, two-tier detection with a
+Working end to end on real books: lossless round-trip, two-tier detection with a
 full decision trace, EPUB 2→3 upgrade, footnote rendering device-verified on a Kobo,
 KEPUB output, a review pass, and a finished book on the device.
 
-Last full run — Knopf's 1994 edition of *The Crossing*, 151,865 words:
+Three McCarthy novels have been through the full pipeline. The third is a **control**
+— *Suttree* has essentially no Spanish in it, so almost every footnote it produces
+is a false positive you can read and count.
 
-| | |
-|---|---|
-| segments considered | 12,302 |
-| escalated to the LLM | 2,556 (21%) |
-| footnotes produced | 726 |
-| wall clock / cost | 73 minutes / $0 |
-| integrity checks | 12 of 12 passing |
+| | words | segments | escalated | footnotes |
+|---|---|---|---|---|
+| *The Crossing* (Knopf 1994) | 151,865 | 12,302 | 2,556 (21%) | 726 |
+| *All the Pretty Horses* | 101,182 | 9,310 | 1,814 (20%) | 270 |
+| *Suttree* — control | 177,257 | 17,344 | 2,548 (15%) | **2** |
+
+Two footnotes in a 177,000-word English novel — one per ~88,000 words. Of 2,548
+escalations the model correctly rejected 2,544 and vetoed 2, which puts precision on
+the "leave English alone" side above **99.9%**.
+
+That control run is what found the defects fixed in `v1.0.0b3`. It first produced
+**six** false positives, of which three were Latin liturgy — a two-language detector
+cannot answer "neither", so it called `Stabat Mater Dolorosa.` Spanish at 0.94. Both
+tiers were blind to it and both are now fixed; see [DESIGN.md §2.6](DESIGN.md).
+
+The two that remain are honest hard cases: `Ay.` (English here, Spanish elsewhere)
+and `No suh.` → "No sir.", dialect English that the similarity veto misses at a 0.67
+ratio against its 0.75 threshold.
+
+Wall clock is ~1.5 s per escalated segment on an M-series laptop — 47 minutes for
+*All the Pretty Horses*, 63 for *Suttree*, 73 for *The Crossing* — at $0.
 
 Known limitations, and what the project has and has not proven, are in
 [CHANGELOG.md](CHANGELOG.md).
@@ -401,7 +442,7 @@ python3.13 -m venv .venv
 ```
 
 ```bash
-./.venv/bin/pytest                       # 369 tests, synthetic fixtures only
+./.venv/bin/pytest                       # 379 tests, synthetic fixtures only
 ./.venv/bin/ruff check src tests tools
 
 # opt in to the real-book tests (the book is never committed)

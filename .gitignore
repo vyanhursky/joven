@@ -54,3 +54,7 @@ dist/
 
 # build artifacts
 dist/
+
+# uv writes this when `uv run` is used in the project directory. The documented
+# dev flow is venv + pip, so a lock file here would only go stale.
+uv.lock

@@ -11,11 +11,11 @@ For *why* the pipeline is shaped this way, see [DESIGN.md](../DESIGN.md).
 
 ## Why isn't this passage annotated?
 
-Never guess — ask the trace. A book with a missing footnote has at least five
+Never guess — ask the trace. A book with a missing footnote has at least six
 possible causes, each with a different fix: the segmenter never produced that
-sentence, Tier 1 confidently called it English, Tier 1 abstained with no translator
-configured, Tier 2 ran and said "not Spanish", or it is `rejected` in the sidecar
-from an earlier review.
+sentence, Tier 1 confidently called it English, Tier 1 vetoed it as Latin, Tier 1
+abstained with no translator configured, Tier 2 ran and said "not Spanish", or it is
+`rejected` in the sidecar from an earlier review.
 
 So every segment gets a record whether or not it became a footnote:
 
@@ -36,6 +36,45 @@ in memory:
 jq -c 'select(.outcome=="escalated") | [.tier1_confidence, .text]' trace.jsonl | sort
 jq -c 'select(.tier2_used and .tier2_is_spanish == false)' trace.jsonl
 ```
+
+### A passage was annotated as Spanish and isn't
+
+The reverse question, and the trace answers it the same way. Two causes worth
+knowing:
+
+```bash
+joven explain trace.jsonl --find "Stabat Mater"
+```
+
+`reason: latin, not spanish` means the Latin veto caught it — Tier 1's detector
+knows only English and Spanish, so a third language is asked about separately before
+a passage can be accepted outright (DESIGN.md §2.6). If it vetoed something that
+really is Spanish, `Triager(veto_latin=False)` turns it off, and the case is worth
+reporting: measured over 1,094 known-Spanish passages it rejected none.
+
+A "translation" that is really the same words tidied up — `No suh.` → "No sir." —
+is the similarity veto missing one. It fires at a 0.75 ratio and that pair scores
+0.67. Lower `SIMILARITY_VETO` in `translate.py` and replay the gates (below) to see
+what else the change would catch or break before committing to a re-run.
+
+### Resuming an interrupted run
+
+`detect` writes the sidecar once, at the end, but the trace is flushed a record at a
+time — so an interrupted run has already recorded every model answer it received:
+
+```bash
+joven detect book.epub -o annotations.json --trace trace.jsonl --resume trace.jsonl
+```
+
+Every recorded answer is reused and only unreached segments cost anything. Tier 1
+and the suppression gates still run over the whole book, so a resumed run reflects
+the current code. Two things are deliberately *not* reused: recorded errors (they
+are retried), and any answer whose Tier-1 verdict has since changed, because the
+accept and escalation paths ask the model different questions.
+
+**A prompt change is not visible to `--resume`.** The recorded answer is reused as
+it stands, so after editing `SYSTEM_PROMPT` or the few-shot examples, re-run without
+`--resume` or the change will not be measured.
 
 ### Replaying the gates without re-running the book
 

@@ -15,12 +15,13 @@ v1 scope: **EPUB input, Spanish→English, Cormac McCarthy's *The Crossing*.**
 | Decision trace (`--trace` / `joven explain`) | see §6.7 |
 | Review & corrections | `joven review` (local UI) + `joven add`; round-trip verified |
 | The finished book | annotated KEPUB on the device, 12 of 12 integrity checks green |
+| Generalisation beyond one book | *All the Pretty Horses* (270 footnotes) and *Suttree* (control, 6) run end to end — §2.6 |
 
 The first full-book run paid for itself by exposing two false-suppression bugs
 that no synthetic case had caught — both traced to the same root cause, and both
 now fixed and pinned by tests drawn from the real corpus (§7).
 
-**353 tests passing, ruff clean.** Verified on the real book: lossless
+**379 tests passing, ruff clean.** Verified on the real book: lossless
 round-trip, text-preservation invariant, `epubcheck` clean **as EPUB 3**,
 noteref→footnote integrity, and KEPUB conversion preserving all 623,144
 characters of prose with all `epub:type` markup intact.
@@ -176,6 +177,73 @@ lingua's built-in mixed-text span API is too jittery to build on:
 ```
 
 Do our own deterministic sentence segmentation instead.
+
+### 2.6 The third language — what a two-language detector cannot say
+
+Measured by running *Suttree*, a McCarthy novel with essentially no Spanish in it,
+as a deliberate control. It produced six footnotes in 177,257 words. Three were
+Latin liturgy.
+
+`LanguageDetectorBuilder.from_languages(ENGLISH, SPANISH)` has no way to answer
+"neither". Asked about Latin it must return one of the two, and it does not return
+English:
+
+```
+Stabat Mater Dolorosa.     SPANISH 0.94   -> tier-1 accept, adjudication skipped
+Miserere mei, Deus ...     SPANISH 0.60   -> escalated; the model agreed it was Spanish
+omnis maligna discordia    SPANISH 0.58   -> escalated; the model agreed it was Spanish
+```
+
+Both tiers are blind to it, and for different reasons. Tier 1 has no vocabulary for
+"not Spanish either"; the model has the vocabulary but was never told that a
+language it can translate might still not be the language it was asked about.
+
+**Adding Latin to the detector is the wrong fix, and the measurement says so.** Latin
+is close enough to Spanish to take probability mass from it, and every threshold here
+is tuned against a two-language distribution:
+
+| text | EN/ES | EN/ES/LA |
+|---|---|---|
+| `Dieciseis.` | 1.00 accept | 0.54 escalate |
+| `Vaya con Dios.` | ~1.00 accept | 0.72 escalate |
+| `He rode back in the dark.` | 0.99 reject | 0.80 escalate |
+
+`Dieciseis.` at 1.00 is one of the two documented Tier-1 strengths (§2.3) and the LLM
+gets it wrong. Trading it away to catch Latin is a bad exchange.
+
+So the detector is left alone and Latin is asked about **separately, as a veto, on
+the accept path only** — the one path where being wrong is unrecoverable, because it
+skips adjudication. Everything the veto would wrongly reject escalates anyway, where
+the model still gets a say.
+
+The rule is a *ranking* test rather than a threshold — the three Latin passages score
+0.67, 0.85 and 0.98, and no cutoff separates those from real Spanish — and it runs on
+the **tag-stripped** text, which is what makes it safe:
+
+| text | latin / spanish | stripped |
+|---|---|---|
+| `Respóndele, he said.` | 0.64 / 0.34 | 0.00 / 1.00 |
+| `La matríz, the old man said.` | 0.44 / 0.42 | 0.00 / 1.00 |
+
+That is the dialogue tag distorting a **third** measurement, for the same reason it
+distorted the similarity veto and the loanword gate (§6.4). Over 1,094 known-Spanish
+passages drawn from *The Crossing* and *All the Pretty Horses*, the veto wrongly
+rejects none.
+
+The escalated path is closed separately, by telling the model in the prompt that
+Latin is not Spanish.
+
+Re-running the control with both halves fixed takes *Suttree* from six false
+positives to **two** — one Latin passage stopped by the veto, two by the prompt, and
+`Vag.` with them — at an unchanged escalation rate and wall clock. The two survivors
+are honest hard cases: `Ay.`, which is English here and Spanish elsewhere, and
+`No suh.` → "No sir.", dialect English that the similarity veto misses at 0.67
+against its 0.75 threshold.
+
+> **Why the control run was worth an hour.** Every other book confirms the tool
+> works. A book with no Spanish in it is the only one whose output is *entirely*
+> error, so it is the only one where precision can be counted by reading. It found
+> this in one run, without a single label being written by hand.
 
 ---
 
@@ -932,6 +1000,33 @@ A small hand-built benchmark could not have shown this.
 | Translation backend | **Local LLM via Ollama** (offline, $0) — the only backend. No hosted-API path, by design. |
 | State model | `annotations.json` sidecar as source of truth; epub never edited in place |
 | Embedded loanwords | **No footnote** for a lone Spanish word inside an English clause — see below |
+| Book identity | The `dc:identifier` named by `@unique-identifier`, never the first one — see below |
+| Third languages | Latin vetoed on the accept path; detector left two-language — §2.6 |
+
+### Book identity → **the declared `unique-identifier`**
+
+An OPF may carry several `dc:identifier` elements — an ISBN, a UUID, a vendor key —
+and `package/@unique-identifier` names the one that is the book's identity. Reading
+the first one instead is not inert, because the EPUB 2→3 upgrade syncs the legacy
+NCX's `dtb:uid` to whatever we report: the wrong answer rewrites a *correct* NCX into
+a mismatched one and introduces an epubcheck `NCX-001` error into a book that had none.
+
+Found on *All the Pretty Horses*:
+
+```xml
+<package ... unique-identifier="uuid_id">
+  <dc:identifier opf:scheme="ISBN">9780679744399</dc:identifier>   <!-- taken -->
+  <dc:identifier id="uuid_id">07553c70-06f6-...</dc:identifier>    <!-- correct -->
+```
+
+*The Crossing* and *Suttree* each carry exactly one `dc:identifier`, so first and
+declared are the same element and the bug is invisible. That is the whole difference,
+and it is the clearest argument in this document for testing on a second book.
+
+The guard is framed as **no worse than the source**, not as *correct*: sources
+disagree with their own NCX all the time — *The Crossing* ships an ISBN there and a
+UUID in the OPF — and repairing that is `sync_ncx_identifier`'s job on the upgrade
+path, not a promise made about every book. What must never happen is the reverse.
 
 ### Embedded loanwords → **not annotated**
 

@@ -1,5 +1,73 @@
 # Changelog
 
+## v1.0.0b3 — 2026-08-28
+
+Everything here was found by running the tool against two books it had never
+seen — *All the Pretty Horses* and *Suttree* — which is the first time it has been
+asked to work on anything but the novel it was written for.
+
+### Fixed
+
+- **The EPUB 2→3 upgrade no longer breaks a valid NCX.** `read_package` took the
+  *first* `dc:identifier` and ignored `package/@unique-identifier`, the attribute
+  whose only job is to say which identifier is the book's identity.
+  `sync_ncx_identifier` then wrote that wrong value into the legacy NCX — so *All
+  the Pretty Horses*, whose OPF lists an ISBN first and its real identity second,
+  came out with an epubcheck `NCX-001` error it did not have going in. Books with a
+  single `dc:identifier` (*The Crossing*, *Suttree*) cannot show the difference,
+  which is why one book was not enough to catch it.
+
+- **Latin is no longer annotated as Spanish.** A two-language detector cannot answer
+  "neither": asked about Latin it must choose, and it does not choose English.
+  *Suttree* — a novel with no Spanish in it — produced `Stabat Mater Dolorosa.` at
+  SPANISH 0.94, above the accept threshold, which skips adjudication entirely and
+  becomes a confident, wrong footnote.
+
+  The obvious fix is wrong. Adding Latin to the detector dilutes the distribution the
+  thresholds are tuned against: `Dieciseis.` drops from 1.00 to 0.54 and stops being
+  accepted, and it is a *documented* Tier-1 strength that the LLM gets wrong. So the
+  primary detector is untouched, and Latin is asked about separately as a veto on the
+  accept path — the one place where being wrong is unrecoverable. **The dialogue tag
+  is stripped before the test**, which is what makes it safe: `Respóndele, he said.`
+  ranks Latin 0.64 / Spanish 0.34 with the attribution attached and 0.00 / 1.00
+  without it. That is the same tag distorting a third measurement, for the same
+  reason it distorted the other two.
+
+  Measured over 1,094 known-Spanish passages from two books: **zero** wrongly vetoed.
+
+- **The model is told that Latin is not Spanish.** The veto guards only the accept
+  path. Two of *Suttree*'s three Latin passages escalated instead, and the model,
+  asked directly, agreed they were Spanish and translated them. The prompt and its
+  few-shot examples now cover this.
+
+- **`--resume` checks the Tier-1 verdict before reusing an answer.** Tier 1's two
+  outcomes call different prompts — an accept gets `translate` ("this is Spanish,
+  render it"), the band gets `adjudicate` ("is this Spanish at all?") — and a
+  translate-only answer always says yes. Resuming across a Tier-1 change would
+  therefore hand a "yes" to a segment the new code wants adjudicated, quietly
+  reinstating the footnote the change existed to prevent. The Latin veto is exactly
+  such a change.
+
+### Documentation
+
+- The install guide covers `uv` itself and the `~/.local/bin` PATH step. Following
+  the previous instructions on a clean machine got you `joven: command not found`.
+- Results now cover three books, including the control run and the precision figure
+  it produced.
+
+### Measured
+
+Re-running the *Suttree* control after these fixes: **six false positives down to
+two**, in 177,257 words. One Latin passage was stopped by the Tier-1 veto, two by
+the prompt, and `Vag.` went with them. Escalation rate and wall clock are unchanged
+(2,548 calls, 63 minutes), so nothing was traded for it.
+
+### Still open
+
+- `No suh.` → "No sir." — dialect English that the similarity veto misses at a 0.67
+  ratio, just under the 0.75 threshold.
+- `Ay.` — genuinely ambiguous out of context; English here, Spanish elsewhere.
+
 ## v1.0.0b2 — 2026-08-28
 
 ### Fixed
