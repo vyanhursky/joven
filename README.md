@@ -66,9 +66,9 @@
 **Joven is a command-line tool that finds the untranslated Spanish in an English
 novel and inserts tappable translation footnotes.** You give it an EPUB you own;
 it gives you back an annotated copy for your e-reader, with the prose byte-for-byte
-unchanged. It was written for Cormac McCarthy's *The Crossing*, and has since been
-run end to end on *All the Pretty Horses* and — as a control — on *Suttree*, which
-has no Spanish in it. See [Results](#results).
+unchanged. It was written specifically to make the Spanish sections of Cormac
+McCarthy's novel *The Crossing* more readable on a Kobo. It also works cleanly for
+other McCarthy westerns, and may work for other multilingual literature.
 
 Everything runs on your machine against a local model: no API key, no per-book
 cost, nothing uploaded.
