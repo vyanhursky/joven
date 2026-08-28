@@ -41,6 +41,42 @@ def _opf_path(archive: EpubArchive) -> str:
     return rootfile.get("full-path")
 
 
+def _unique_identifier(root: etree._Element) -> str | None:
+    """The book's identity — the ``dc:identifier`` that ``@unique-identifier`` names.
+
+    Taking the *first* ``dc:identifier`` instead is wrong whenever a book carries
+    more than one, and it is wrong in a way that damages the output: the EPUB 2->3
+    upgrade syncs the legacy NCX's ``dtb:uid`` to this value, so picking the wrong
+    element rewrites a correct NCX into a mismatched one and *introduces* an
+    epubcheck NCX-001 error into a book that had none.
+
+    Found on *All the Pretty Horses*, whose OPF carries an ISBN first and the real
+    identity second::
+
+        <package ... unique-identifier="uuid_id">
+          <dc:identifier opf:scheme="ISBN">9780679744399</dc:identifier>
+          <dc:identifier id="uuid_id">07553c70-06f6-...</dc:identifier>
+
+    Books with a single identifier -- *The Crossing*, *Suttree* -- cannot show the
+    difference, which is why one book was not enough to catch it.
+
+    Falls back to the first identifier when ``@unique-identifier`` is absent or
+    dangling, since a wrong-but-present value is still better than none for
+    ``inspect``.
+    """
+    identifiers = root.findall(f".//{{{DC_NS}}}identifier")
+    if not identifiers:
+        return None
+
+    unique_id = root.get("unique-identifier")
+    if unique_id:
+        for el in identifiers:
+            if el.get("id") == unique_id and el.text:
+                return el.text.strip()
+
+    return identifiers[0].text.strip() if identifiers[0].text else None
+
+
 def read_package(archive: EpubArchive) -> Package:
     opf_path = _opf_path(archive)
     if opf_path not in archive:
@@ -53,10 +89,13 @@ def read_package(archive: EpubArchive) -> Package:
         return posixpath.normpath(posixpath.join(base, href)) if base else href
 
     metadata: dict[str, str] = {}
-    for tag in ("title", "creator", "language", "publisher", "identifier"):
+    for tag in ("title", "creator", "language", "publisher"):
         el = root.find(f".//{{{DC_NS}}}{tag}")
         if el is not None and el.text:
             metadata[tag] = el.text.strip()
+
+    if identifier := _unique_identifier(root):
+        metadata["identifier"] = identifier
 
     manifest = {
         item.get("id"): resolve(item.get("href"))
