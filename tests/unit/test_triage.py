@@ -245,3 +245,57 @@ def test_loanword_threshold_is_tunable() -> None:
     seg, span = "Muy bien amigo", "amigo"
     assert is_embedded_loanword(seg, span, max_outside_words=1)
     assert not is_embedded_loanword(seg, span, max_outside_words=5)
+
+
+# ---------------------------------------------------------- the Latin veto
+
+
+def test_latin_is_not_accepted_as_spanish() -> None:
+    """*Suttree* has no Spanish in it and produced this footnote anyway.
+
+    A two-language detector cannot answer "neither", so it called Latin SPANISH at
+    0.94 -- over the accept threshold, which skips adjudication entirely.
+    """
+    result = Triager().classify("Stabat Mater Dolorosa.")
+    assert result.verdict is Verdict.ENGLISH
+    assert result.reason == "latin, not spanish"
+
+
+def test_the_veto_survives_a_dialogue_tag() -> None:
+    """The tag is what made the naive ranking test unsafe.
+
+    ``Respóndele, he said.`` ranks Latin 0.64 / Spanish 0.34 with the attribution
+    attached and 0.00 / 1.00 without it — the same distortion `dialogue.py`
+    documents for two other measurements.
+    """
+    for text in ("Respóndele, he said.", "La matríz, the old man said."):
+        result = Triager().classify(text)
+        assert result.verdict is Verdict.SPANISH, text
+        assert result.reason != "latin, not spanish"
+
+
+def test_the_veto_does_not_touch_the_escalation_path() -> None:
+    """It guards only the accept path, where being wrong is unrecoverable.
+
+    Anything Tier 1 is unsure about escalates, and the model still gets a say —
+    so the veto never has to be right about those, and is not asked.
+    """
+    result = Triager().classify("Es un huinche?")
+    assert result.verdict is Verdict.UNCERTAIN
+    assert result.reason != "latin, not spanish"
+
+
+def test_veto_can_be_switched_off() -> None:
+    assert Triager(veto_latin=False).classify("Stabat Mater Dolorosa.").verdict is Verdict.SPANISH
+
+
+def test_short_confident_spanish_survives_the_veto() -> None:
+    """The regression that ruled out simply adding Latin to the detector.
+
+    ``Dieciseis.`` scores 1.00 in the two-language detector and 0.54 in a
+    three-language one — and it is a documented Tier-1 strength the LLM gets
+    wrong, so it must keep scoring 1.00.
+    """
+    result = Triager().classify("Dieciseis.")
+    assert result.verdict is Verdict.SPANISH
+    assert result.confidence >= 0.99

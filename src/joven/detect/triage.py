@@ -111,6 +111,30 @@ def is_embedded_loanword(
     return len(outside) > max_outside_words
 
 
+# A two-language detector cannot answer "neither". Asked about Latin it must pick
+# English or Spanish, and it does not pick English: *Suttree* -- a novel with no
+# Spanish in it at all -- produced `Stabat Mater Dolorosa.` as SPANISH 0.94, over
+# the accept threshold, which skips adjudication entirely and becomes a confident,
+# wrong footnote.
+#
+# The obvious fix -- add Latin to the detector -- is wrong, and measurably so.
+# Latin is close enough to Spanish to take probability mass from it, and the
+# thresholds here are tuned against a two-language distribution:
+#
+#     text                        EN/ES        EN/ES/LA
+#     Dieciseis.                  1.00 accept  0.54 escalate
+#     Vaya con Dios.              ~1.0 accept  0.72 escalate
+#     He rode back in the dark.   0.99 reject  0.80 escalate
+#
+# `Dieciseis.` at 1.00 is a *documented* Tier-1 strength (see the module docstring)
+# and the LLM gets it wrong, so trading it away to catch Latin is a bad exchange.
+#
+# So the primary detector is left exactly as it was, and Latin is asked about
+# separately, as a veto. The question is not "how Latin is this?" but "when Latin
+# is on the ballot, does it win?" -- which real Spanish survives and Latin does not.
+LATIN_LANGUAGES = (Language.ENGLISH, Language.SPANISH, Language.LATIN)
+
+
 @lru_cache(maxsize=1)
 def _detector() -> LanguageDetector:
     return (
@@ -118,6 +142,45 @@ def _detector() -> LanguageDetector:
         .with_preloaded_language_models()
         .build()
     )
+
+
+@lru_cache(maxsize=1)
+def _latin_detector() -> LanguageDetector:
+    return (
+        LanguageDetectorBuilder.from_languages(*LATIN_LANGUAGES)
+        .with_preloaded_language_models()
+        .build()
+    )
+
+
+def looks_latin(text: str) -> bool:
+    """True when Latin outranks both English and Spanish for this text.
+
+    Deliberately a ranking test rather than a confidence threshold. The three
+    Latin passages in *Suttree* score 0.67, 0.85 and 0.98 as Latin -- no cutoff
+    separates those from noise without also catching real Spanish -- but Latin
+    *wins* in all three.
+
+    **The dialogue tag is stripped first**, which is what makes the rule safe.
+    Measured over 781 reviewed spans from *The Crossing* and 313 from *All the
+    Pretty Horses*, the raw ranking test wrongly vetoes ten genuine Spanish
+    passages; every one of them that survives to the accept path is dialogue --
+    ``Respóndele, he said.``, ``La matríz, the old man said.`` -- and the English
+    attribution is doing it:
+
+    ===============================  ============  ==========
+    text                             latin / span  stripped
+    ===============================  ============  ==========
+    ``Respóndele, he said.``         0.64 / 0.34   0.00 / 1.00
+    ``La matríz, the old man said.`` 0.44 / 0.42   0.00 / 1.00
+    ===============================  ============  ==========
+
+    That is the same tag, distorting a third measurement, for the same reason it
+    distorted the other two (see :mod:`joven.dialogue`).
+    """
+    stripped = strip_dialogue_tags(text)
+    values = _latin_detector().compute_language_confidence_values(stripped)
+    return bool(values) and str(values[0].language) == "Language.LATIN"
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +194,9 @@ class Triager:
 
     accept_spanish: float = 0.90
     reject_english: float = 0.90
+    # Ask whether a passage is Latin before calling it Spanish. Off only for tests
+    # that want the pre-veto behaviour.
+    veto_latin: bool = True
     min_words_to_accept: int = 3
     strip_tags: bool = True
     # a tag-stripped fragment must clear a higher bar, since it has less signal
@@ -145,6 +211,15 @@ class Triager:
         words = len(_WORD.findall(cleaned))
 
         if language == "SPANISH" and confidence >= self.accept_spanish:
+            # The accept path is the dangerous one: it skips adjudication entirely,
+            # so a wrong call here becomes a footnote with nothing downstream to
+            # catch it. Everything the veto would wrongly reject *escalates*
+            # anyway, where the model still gets a say -- so ask about Latin only
+            # here, where being wrong is unrecoverable.
+            if self.veto_latin and looks_latin(cleaned):
+                return TriageResult(
+                    text, Verdict.ENGLISH, "LATIN", confidence, reason="latin, not spanish"
+                )
             if words >= self.min_words_to_accept:
                 return TriageResult(
                     text, Verdict.SPANISH, language, confidence, reason="confident spanish"
@@ -162,6 +237,7 @@ class Triager:
             return TriageResult(
                 text, Verdict.ENGLISH, language, confidence, reason="confident english"
             )
+
 
         # Ambiguous. Try again with the English dialogue tag removed.
         if self.strip_tags:

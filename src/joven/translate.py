@@ -58,6 +58,10 @@ is_spanish
     - English prose containing isolated Spanish loanwords or proper nouns
       (matriz, copo, candela, vaquero, guero, Casas Grandes)
     - short plain English lines
+  **false for text in some other language that is not Spanish** - Latin
+  especially, which these novels quote from liturgy and scripture. Latin is not
+  Spanish, however much it resembles it. If the passage is Latin, French or
+  Italian, is_spanish is false even though you could translate it.
   If your translation would just be a tidied-up version of the same words,
   the answer is false.
 
@@ -94,6 +98,14 @@ FEWSHOT: list[tuple[str, dict]] = [
         {"is_spanish": False, "spanish_text": "", "translation": ""},
     ),
     ("Go on.", {"is_spanish": False, "spanish_text": "", "translation": ""}),
+    # Latin. Added after a full run of Suttree -- a novel with no Spanish in it --
+    # produced three Latin footnotes, two of which the model accepted on being
+    # asked directly. Tier 1's veto only guards the accept path, so the escalated
+    # path needs the model to know this itself.
+    (
+        "Miserere mei, Deus ...",
+        {"is_spanish": False, "spanish_text": "", "translation": ""},
+    ),
     # Dialect English. Added after a traced full-book run showed the model
     # "translating" these into standard English and labelling them Spanish.
     ("Yessir.", {"is_spanish": False, "spanish_text": "", "translation": ""}),
