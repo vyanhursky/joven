@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from joven.epub.document import document_text, iter_text_units, parse, serialize
+import pytest
+
+from joven.epub.archive import EpubError
+from joven.epub.document import (
+    DocumentError,
+    document_text,
+    iter_text_units,
+    parse,
+    resolve_named_entities,
+    serialize,
+)
 
 XML_DECL = "<?xml version='1.0' encoding='utf-8'?>"
 
@@ -166,3 +176,58 @@ def test_crlf_in_the_body_normalizes_to_lf() -> None:
     assert out.startswith(b"<?xml version='1.0' encoding='utf-8'?>\r\n"), "style preserved"
     assert b"\r" not in out[40:], "body CRs normalized away by the parser"
     parse(out)
+
+
+# ------------------------------------------------------- HTML named entities
+
+
+def test_named_entities_do_not_break_the_parse() -> None:
+    """XML defines five entity names; XHTML in the wild uses the whole HTML set.
+
+    The book this tool was built against uses none of them, so every EPUB that did
+    was refused with `Entity 'nbsp' not defined` and a traceback.
+    """
+    data = _html("<p>Vaya&nbsp;con Dios&mdash;dijo&rsquo;l.</p>")
+    assert document_text(data) == "Vaya\xa0con Dios\u2014dijo\u2019l."
+
+
+def test_xml_builtin_entities_are_left_for_the_parser() -> None:
+    """Resolving `&amp;` here would inject a bare `&` and break the document."""
+    assert b"&amp;" in resolve_named_entities(b"<p>Ma &amp; Pa</p>")
+    assert document_text(_html("<p>Ma &amp; Pa</p>")) == "Ma & Pa"
+
+
+def test_numeric_references_are_left_alone() -> None:
+    """Already valid XML — the parser handles them without help."""
+    assert resolve_named_entities(b"<p>a&#160;b</p>") == b"<p>a&#160;b</p>"
+    assert document_text(_html("<p>a&#160;b</p>")) == "a\xa0b"
+
+
+def test_entity_whose_replacement_is_markup_stays_an_entity() -> None:
+    """HTML defines `&AMP;`; XML does not. It must resolve to `&amp;`, not `&`."""
+    assert resolve_named_entities(b"<p>a &AMP; b</p>") == b"<p>a &amp; b</p>"
+    assert document_text(_html("<p>a &AMP; b</p>")) == "a & b"
+
+
+def test_unknown_entity_still_fails_loudly() -> None:
+    """Silence here would mean losing text without saying so."""
+    with pytest.raises(DocumentError, match="notarealentity"):
+        document_text(_html("<p>x &notarealentity; y</p>"))
+
+
+def test_document_error_is_an_epub_error() -> None:
+    """So one `except` in the CLI covers both, and neither reaches the user raw."""
+    assert issubclass(DocumentError, EpubError)
+
+
+def test_entities_survive_reserialization_as_characters() -> None:
+    """The invariant compares text, and both sides come back through `parse`.
+
+    A `&nbsp;` becomes U+00A0 on the way in, so the annotated output holding a
+    literal U+00A0 still matches the original byte for byte *as text* — which is
+    what `check_text_preserved` asserts.
+    """
+    source = _html("<p>Vaya&nbsp;con Dios.</p>")
+    out = serialize(parse(source), original=source)
+    assert document_text(out) == document_text(source)
+    assert b"&nbsp;" not in out

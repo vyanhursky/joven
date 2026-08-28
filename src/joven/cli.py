@@ -30,8 +30,18 @@ def _load(path: Path) -> EpubArchive:
     try:
         return EpubArchive.read(path)
     except EpubError as exc:
-        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(2) from exc
+        _fail(exc)
+
+
+def _fail(exc: Exception) -> None:
+    """Report an unusable book as an error, not a traceback.
+
+    ``DocumentError`` is an ``EpubError``, so this covers both the archive being
+    wrong and an individual XHTML document being unparseable — which is what a
+    reader gets when a book uses a named entity we cannot resolve.
+    """
+    typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+    raise typer.Exit(2) from exc
 
 
 @app.command()
@@ -58,7 +68,10 @@ def inspect(
         if href not in archive:
             typer.secho(f"  {href}  (MISSING)", fg=typer.colors.RED)
             continue
-        units = iter_text_units(archive.get(href), href)
+        try:
+            units = iter_text_units(archive.get(href), href)
+        except EpubError as exc:
+            _fail(EpubError(f"{href}: {exc}"))
         words = sum(len(u.text.split()) for u in units)
         total_units += len(units)
         total_words += words
@@ -241,9 +254,16 @@ def detect(
         )
 
     with Tracer(path=trace) as tracer:
-        sidecar, result = run_detect(
-            epub, triager=Triager(), translator=translator, tracer=tracer, limit=limit
-        )
+        try:
+            sidecar, result = run_detect(
+                epub,
+                triager=Triager(),
+                translator=translator,
+                tracer=tracer,
+                limit=limit,
+            )
+        except EpubError as exc:
+            _fail(exc)
         report = tracer.format_report()
         band = tracer.band_samples(8)
         rejections = tracer.llm_rejections(8)
@@ -381,7 +401,10 @@ def add(
     for href in package.spine_hrefs:
         if href not in archive:
             continue
-        units = iter_text_units(archive.get(href), href)
+        try:
+            units = iter_text_units(archive.get(href), href)
+        except EpubError as exc:
+            _fail(EpubError(f"{href}: {exc}"))
         for unit, occurrence in zip(
             units, occurrence_indices(u.text for u in units), strict=True
         ):

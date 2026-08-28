@@ -101,22 +101,44 @@ PART2_PARAGRAPHS = [
     "Go on.",  # English, but statistically Spanish-leaning
 ]
 
-ENTRIES: list[tuple[str, str, int]] = [
-    ("mimetype", "application/epub+zip", zipfile.ZIP_STORED),
-    ("META-INF/container.xml", CONTAINER_XML, zipfile.ZIP_DEFLATED),
-    ("content.opf", CONTENT_OPF, zipfile.ZIP_DEFLATED),
-    ("OEBPS/part1.xhtml", _doc(PART1_PARAGRAPHS), zipfile.ZIP_DEFLATED),
-    ("OEBPS/part2.xhtml", _doc(PART2_PARAGRAPHS), zipfile.ZIP_DEFLATED),
-    ("toc.ncx", TOC_NCX, zipfile.ZIP_DEFLATED),
-    ("stylesheet1.css", STYLESHEET, zipfile.ZIP_DEFLATED),
-]
+DEFAULT_DOCUMENTS: dict[str, list[str]] = {
+    "OEBPS/part1.xhtml": PART1_PARAGRAPHS,
+    "OEBPS/part2.xhtml": PART2_PARAGRAPHS,
+}
 
 
-def build_epub(path: Path, *, extra: dict[str, str] | None = None) -> Path:
-    """Write a minimal, spec-valid EPUB 2.0 to ``path``."""
+def _entries(documents: dict[str, list[str]]) -> list[tuple[str, str, int]]:
+    return [
+        ("mimetype", "application/epub+zip", zipfile.ZIP_STORED),
+        ("META-INF/container.xml", CONTAINER_XML, zipfile.ZIP_DEFLATED),
+        ("content.opf", CONTENT_OPF, zipfile.ZIP_DEFLATED),
+        *(
+            (name, _doc(paragraphs), zipfile.ZIP_DEFLATED)
+            for name, paragraphs in documents.items()
+        ),
+        ("toc.ncx", TOC_NCX, zipfile.ZIP_DEFLATED),
+        ("stylesheet1.css", STYLESHEET, zipfile.ZIP_DEFLATED),
+    ]
+
+
+ENTRIES: list[tuple[str, str, int]] = _entries(DEFAULT_DOCUMENTS)
+
+
+def build_epub(
+    path: Path,
+    *,
+    extra: dict[str, str] | None = None,
+    documents: dict[str, list[str]] | None = None,
+) -> Path:
+    """Write a minimal, spec-valid EPUB 2.0 to ``path``.
+
+    ``documents`` replaces the prose while keeping the same spine and manifest,
+    which is how a book with different markup quirks gets built without a second
+    copy of the whole fixture.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for name, text, compress in ENTRIES:
+        for name, text, compress in _entries(documents or DEFAULT_DOCUMENTS):
             info = zipfile.ZipInfo(filename=name, date_time=(2010, 7, 28, 0, 0, 0))
             info.compress_type = compress
             info.external_attr = 0o644 << 16
@@ -129,6 +151,31 @@ def build_epub(path: Path, *, extra: dict[str, str] | None = None) -> Path:
 @pytest.fixture
 def sample_epub(tmp_path: Path) -> Path:
     return build_epub(tmp_path / "sample.epub")
+
+
+# The same book, written the way most publishers write one: HTML named entities
+# in the prose. The Knopf edition of the target book uses none, which is why
+# nothing caught `Entity 'nbsp' not defined` until a second book was tried.
+ENTITY_PARAGRAPHS = [
+    "He turned the horse out along the&nbsp;rutted track&mdash;and rode on.",
+    "Se fu&eacute;.",
+    "Ay. &Aacute;ndale, joven. &Aacute;ndale pues.",
+    "The boy withdrew his hand &amp; he rose.",
+    "Cu&aacute;ntos a&ntilde;os tienes? the old man said.",
+    "Dieciseis.",
+]
+
+
+@pytest.fixture
+def entity_epub(tmp_path: Path) -> Path:
+    """A book whose prose uses HTML named entities throughout."""
+    return build_epub(
+        tmp_path / "entities.epub",
+        documents={
+            "OEBPS/part1.xhtml": ENTITY_PARAGRAPHS,
+            "OEBPS/part2.xhtml": PART2_PARAGRAPHS,
+        },
+    )
 
 
 @pytest.fixture

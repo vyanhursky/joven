@@ -21,8 +21,12 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import lru_cache
+from html.entities import html5
 
 from lxml import etree
+
+from .archive import EpubError
 
 XHTML_NS = "http://www.w3.org/1999/xhtml"
 EPUB_NS = "http://www.idpf.org/2007/ops"
@@ -36,8 +40,60 @@ _XML_DECL = re.compile(rb"\A\s*<\?xml[^>]*\?>(?:\r\n|\n)?")
 NSMAP = {"x": XHTML_NS}
 
 
-class DocumentError(Exception):
-    """Raised when an XHTML document cannot be parsed."""
+class DocumentError(EpubError):
+    """Raised when an XHTML document cannot be parsed.
+
+    An :class:`~joven.epub.archive.EpubError` because it means the same thing to
+    the caller: this file cannot be used. The CLI reports both the same way.
+    """
+
+
+# ------------------------------------------------------- HTML named entities
+
+# XML defines exactly five named entities. XHTML documents in the wild use the
+# full HTML set -- `&nbsp;`, `&mdash;`, `&rsquo;` -- and are then not well-formed
+# XML unless they declare them, which publishers routinely don't bother to do.
+# The Knopf edition this tool was built against happens to use none of them; most
+# EPUBs use several, and lxml answers with `Entity 'nbsp' not defined`.
+#
+# So resolve the HTML names to their characters before parsing. Doing it here
+# rather than at a call site matters for the text-preservation invariant: the
+# original and the annotated output are both read back through this function, so
+# whatever a `&nbsp;` becomes, it becomes on both sides and the comparison stays
+# honest.
+_XML_BUILTIN = frozenset({"amp", "lt", "gt", "quot", "apos"})
+_NAMED_ENTITY = re.compile(rb"&([A-Za-z][A-Za-z0-9]*);")
+# A replacement that is itself XML markup has to stay an entity reference, or
+# resolving `&AMP;` would inject a bare `&` and break the parse it was meant to fix.
+_REMAINS_MARKUP = {"&": b"&amp;", "<": b"&lt;", ">": b"&gt;"}
+
+
+@lru_cache(maxsize=1)
+def _entity_table() -> dict[bytes, bytes]:
+    """HTML entity name -> replacement bytes, minus the five XML already knows."""
+    table: dict[bytes, bytes] = {}
+    for name, char in html5.items():
+        if not name.endswith(";") or name[:-1] in _XML_BUILTIN:
+            continue
+        table[name[:-1].encode("ascii")] = b"".join(
+            _REMAINS_MARKUP.get(ch) or ch.encode("utf-8") for ch in char
+        )
+    return table
+
+
+def resolve_named_entities(data: bytes) -> bytes:
+    """Replace HTML named entity references with the characters they stand for.
+
+    Numeric references (``&#160;``) are already valid XML and are left alone, as
+    is any name we don't recognise -- a document declaring its own entities in a
+    DOCTYPE keeps them, and an undeclared one still fails loudly.
+    """
+    table = _entity_table()
+
+    def substitute(match: re.Match[bytes]) -> bytes:
+        return table.get(match.group(1), match.group(0))
+
+    return _NAMED_ENTITY.sub(substitute, data)
 
 
 def parse(data: bytes) -> etree._ElementTree:
@@ -50,7 +106,7 @@ def parse(data: bytes) -> etree._ElementTree:
         strip_cdata=False,
     )
     try:
-        return etree.ElementTree(etree.fromstring(data, parser=parser))
+        return etree.ElementTree(etree.fromstring(resolve_named_entities(data), parser=parser))
     except etree.XMLSyntaxError as exc:
         raise DocumentError(f"malformed XHTML: {exc}") from exc
 

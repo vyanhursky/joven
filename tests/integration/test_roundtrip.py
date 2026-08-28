@@ -63,6 +63,45 @@ def test_text_invariant_catches_altered_text(sample_epub: Path) -> None:
     assert not check_text_preserved(original, broken).ok
 
 
+def test_entity_book_survives_a_full_annotated_render(
+    entity_epub: Path, tmp_path: Path
+) -> None:
+    """The invariant must hold for a book written with HTML named entities.
+
+    Entities are resolved to characters on the way in, so an annotated document
+    comes back out holding a literal U+00A0 where `&nbsp;` was. That is a byte
+    change and not a text change, which is exactly the distinction
+    `check_text_preserved` is built on — this test is what proves the two agree.
+    """
+    from joven.detect.pipeline import detect
+    from joven.render import render_epub
+    from joven.translate import StubTranslator
+
+    sidecar, result = detect(entity_epub, translator=StubTranslator())
+    assert result.annotations, "fixture produced nothing to insert"
+
+    rendered = render_epub(entity_epub, sidecar, tmp_path / "out", make_kepub=False)
+    assert rendered.annotations_applied
+
+    finding = check_text_preserved(
+        EpubArchive.read(entity_epub), EpubArchive.read(rendered.epub_path)
+    )
+    assert finding.ok, finding.detail
+
+
+def test_entity_book_passthrough_is_byte_identical(
+    entity_epub: Path, tmp_path: Path
+) -> None:
+    """With nothing to insert, no document is reserialized and `&nbsp;` stays put."""
+    original = EpubArchive.read(entity_epub)
+    out = tmp_path / "out.epub"
+    original.write(out)
+
+    produced = EpubArchive.read(out)
+    assert check_roundtrip_identical(original, produced).ok
+    assert b"&nbsp;" in produced.get("OEBPS/part1.xhtml")
+
+
 def test_mimetype_check_on_output(sample_epub: Path, tmp_path: Path) -> None:
     out = tmp_path / "out.epub"
     EpubArchive.read(sample_epub).write(out)
