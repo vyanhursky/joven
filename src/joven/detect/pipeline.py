@@ -82,14 +82,25 @@ def _recall(
 ) -> LLMVerdict | None:
     """The model's prior answer for this exact segment, if a trace holds one.
 
-    Matched on address *and* text: the address alone would hand a stale answer to
-    a re-edited book, and silently translating one paragraph as another is a worse
-    failure than spending the 1.7 seconds again.
+    Matched on address, text *and* Tier-1 verdict. The first two are obvious: the
+    address alone would hand a stale answer to a re-edited book, and silently
+    translating one paragraph as another is worse than spending the 1.7 seconds
+    again.
+
+    The verdict is the subtle one, and the Latin veto is exactly what makes it
+    matter. Tier 1's two outcomes call *different* prompts -- an accept gets
+    ``translate`` ("this is Spanish, render it"), the band gets ``adjudicate``
+    ("is this Spanish at all?") -- and a translate-only answer always says yes. So
+    resuming across a Tier-1 change without checking the verdict would hand a
+    "yes, Spanish" answer to a segment the new code wants adjudicated, quietly
+    reinstating the very footnote the change was made to prevent.
 
     Reported with zero latency, because this run did not spend it.
     """
     prior = recorded.get((decision.href, decision.para_index, decision.segment_index))
     if prior is None or prior.text != decision.text:
+        return None
+    if prior.tier1_verdict != decision.tier1_verdict:
         return None
     return LLMVerdict(
         is_spanish=bool(prior.tier2_is_spanish),

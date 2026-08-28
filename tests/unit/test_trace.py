@@ -270,3 +270,39 @@ def test_resume_ignores_answers_whose_text_no_longer_matches(
 
     _, result = detect(sample_epub, translator=StubTranslator(), resume=recorded)
     assert result.llm_recalled == 0
+
+
+def test_resume_refuses_an_answer_from_a_different_tier1_verdict() -> None:
+    """The sharp edge the Latin veto creates, and the reason to check the verdict.
+
+    Tier 1's two outcomes call different prompts: an accept gets `translate`
+    ("this is Spanish, render it"), the band gets `adjudicate` ("is it Spanish at
+    all?"). A translate-only answer always says yes. So a change that moves a
+    segment from accept to escalate -- which is exactly what the Latin veto does --
+    would otherwise resume by handing that "yes" to the adjudication path, quietly
+    restoring the footnote the change existed to prevent.
+    """
+    from joven.detect.pipeline import _recall
+
+    prior = Decision(
+        href="a.xhtml", para_index=1, segment_index=0,
+        text="Stabat Mater Dolorosa.", start=0, end=22,
+        tier1_verdict="spanish", tier2_used=True,
+        tier2_is_spanish=True, tier2_translation="The Sorrowful Mother stood.",
+    )
+    index = {("a.xhtml", 1, 0): prior}
+
+    # same segment, but Tier 1 now escalates it instead of accepting
+    now = Decision(
+        href="a.xhtml", para_index=1, segment_index=0,
+        text="Stabat Mater Dolorosa.", start=0, end=22,
+        tier1_verdict="uncertain",
+    )
+    assert _recall(index, now) is None
+
+    unchanged = Decision(
+        href="a.xhtml", para_index=1, segment_index=0,
+        text="Stabat Mater Dolorosa.", start=0, end=22,
+        tier1_verdict="spanish",
+    )
+    assert _recall(index, unchanged) is not None
