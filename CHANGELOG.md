@@ -1,5 +1,85 @@
 # Changelog
 
+## Unreleased
+
+**Windows is a supported platform.** Everything here was found by running the tool
+on Windows 11 for the first time — the suite, the guard scripts, and a whole novel
+through `detect`, `render` and `verify`. The README had said "Windows is
+untested", and untested turned out to mean four bugs, one of them silent.
+
+### Fixed
+
+- **External tools are run by resolved path, not by bare name.** `shutil.which`
+  honours `PATHEXT`, so on Windows it resolves `epubcheck.CMD` — but
+  `CreateProcess` can only start a `.exe`, so `subprocess.run(["epubcheck", …])`
+  raised `FileNotFoundError` for a tool that was installed and on `PATH`.
+  `epubcheck_available()` returned True and the run then died, which is the worst
+  shape a dependency check can take. It affects every `.cmd`/`.bat` launcher,
+  which is how epubcheck and most JVM tools arrive on Windows. Three integration
+  tests failed on it.
+
+- **epubcheck is found without a launcher at all.** The official distribution is a
+  zip holding `epubcheck.jar` and nothing else — no `.bat`, no `.exe` — so on
+  Windows there was never anything for `PATH` to find. This was the silent one:
+  epubcheck was reported missing, and `verify` reported it `SKIPPED` and *passed*,
+  so the single external gate on the output stopped running while the run still
+  looked clean. `JOVEN_EPUBCHECK_JAR` now points at the jar and it runs under
+  `java -jar`.
+
+- **The review server answers a refused POST instead of resetting the
+  connection.** `do_POST` sent 404 and 415 without reading the body it was
+  refusing. Unread bytes left in the socket make Windows reset rather than close,
+  so the client got `WinError 10053` where the status code should have been — the
+  refusal arriving as a dropped connection rather than as a 415. Whether the reset
+  beat the response out of the buffer was a race, so this also flaked rather than
+  failing honestly. The content-type refusal that stops a page in another tab
+  writing to the sidecar is unchanged; it just says so now.
+
+- **Output is UTF-8 even when redirected.** A redirected stream on Windows falls
+  back to the locale encoding, cp1252 on a stock install, so `matríz` written to a
+  file came back as `matr?z`. Worse, `joven add` echoes the passage it matched, and
+  `typer.echo` given a character outside cp1252 raises `UnicodeEncodeError` rather
+  than degrading — after the sidecar has already been written. Accented Spanish is
+  safe, since cp1252 covers it, and *The Crossing* contains no character outside
+  it; that was luck rather than safety.
+
+### Documentation
+
+- The install guide covers the Windows route, and calls out the epubcheck jar step
+  specifically, because skipping it does not fail loudly — it reports `SKIPPED`
+  and passes.
+- Development covers `Scripts\` rather than `bin/`, and the reinstall-while-running
+  trap: Windows cannot replace an open file, so `pip install -e .` during a long
+  `detect` leaves a half-uninstalled package and a venv that looks fine until it
+  raises `ModuleNotFoundError`.
+- A `.gitattributes` settles line endings in the repository rather than per clone.
+  Not cosmetic here: the load-bearing invariant compares bytes, so a stray `\r` in
+  a tracked fixture would look like the renderer corrupting the book.
+
+### Infrastructure
+
+- CI runs the suite on `windows-latest` at the Python floor and ceiling, five jobs
+  in total. The Windows epubcheck step deliberately creates no launcher, so CI
+  exercises the jar route a real user takes rather than a wrapper invented for its
+  own convenience.
+
+### Measured
+
+A full run on Windows 11, against a different edition of *The Crossing* (149,995
+words to the Knopf edition's 151,865) — RTX 4070 Ti SUPER, 32 GB, `qwen3:8b`:
+
+| | macOS, Knopf edition | Windows, this edition |
+|---|---|---|
+| escalated to the LLM | 2,556 (21%) | 2,544 (21%) |
+| footnotes produced | 726 | 731 |
+| integrity checks | 12 of 12 | 12 of 12 |
+| wall clock | 73 min | 12.2 min |
+
+The escalation rate matches to within a percentage point and the footnote count to
+within five on a book five thousand words shorter, which is the evidence that the
+port changed behaviour nowhere. The wall clock is a GPU, not a platform: 0.3 s per
+escalated call against 1.5 s on an M-series laptop.
+
 ## v1.0.0b3 — 2026-08-28
 
 Everything here was found by running the tool against two books it had never
