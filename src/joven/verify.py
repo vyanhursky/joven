@@ -9,15 +9,15 @@ duplicated, or reordered the author's text.
 
 from __future__ import annotations
 
+import os
 import posixpath
-import shutil
-import subprocess
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from lxml import etree
 
+from . import external
 from .epub.archive import MIMETYPE_NAME, EpubArchive
 from .epub.document import JOVEN_ATTR, XHTML_NS, document_text, parse, text_of
 
@@ -313,20 +313,45 @@ def check_ids_unique(produced: EpubArchive) -> Finding:
 # ----------------------------------------------------------------- epubcheck
 
 
+JAR_ENV = "JOVEN_EPUBCHECK_JAR"
+
+
+def epubcheck_command() -> list[str] | None:
+    """The argv prefix that runs epubcheck, or None if it is not installed.
+
+    Two routes, because epubcheck arrives differently on different platforms.
+    Homebrew and Linux packages drop a launcher on ``PATH``; the *official*
+    distribution is a zip containing ``epubcheck.jar`` and no launcher at all,
+    which is what a Windows user actually ends up with. Without the jar route
+    they get no launcher, ``epubcheck`` is reported missing, and the check that
+    validates our output silently downgrades itself to SKIPPED — the suite stays
+    green while no longer checking the one thing it exists to check.
+
+    Returns the argv rather than a bool so callers invoke the *resolved* path;
+    see :mod:`joven.external` for why the bare name is not safe on Windows.
+    """
+    launcher = external.resolve("epubcheck")
+    if launcher:
+        return [launcher]
+    if jar := os.environ.get(JAR_ENV):
+        return external.java_command(Path(jar))
+    return None
+
+
 def epubcheck_available() -> bool:
-    return shutil.which("epubcheck") is not None
+    return epubcheck_command() is not None
 
 
 def check_epubcheck(path: Path) -> Finding:
     """Run the external epubcheck validator."""
-    if not epubcheck_available():
-        return Finding(True, "epubcheck", "SKIPPED — epubcheck not on PATH")
-    proc = subprocess.run(  # noqa: S603
-        ["epubcheck", "--quiet", str(path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    command = epubcheck_command()
+    if command is None:
+        return Finding(
+            True,
+            "epubcheck",
+            f"SKIPPED — epubcheck not on PATH (or set {JAR_ENV} to epubcheck.jar)",
+        )
+    proc = external.run([*command, "--quiet", str(path)])
     output = (proc.stdout + proc.stderr).strip()
     if proc.returncode == 0:
         return Finding(True, "epubcheck", "clean")
