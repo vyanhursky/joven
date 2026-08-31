@@ -37,7 +37,9 @@ Issues = "https://github.com/vyanhursky/joven/issues"
 Changelog = "https://github.com/vyanhursky/joven/blob/main/CHANGELOG.md"
 
 [project.scripts]
-joven = "joven.cli:app"
+# main(), not app(): it pins stdout/stderr to UTF-8 before Typer gets a chance to
+# print Spanish through a cp1252 stream. See joven.cli.main.
+joven = "joven.cli:main"
 
 [build-system]
 requires = ["setuptools>=77"]
