@@ -1,0 +1,22 @@
+# Line endings are decided here, not by each contributor's core.autocrlf.
+#
+# Git for Windows sets core.autocrlf=true at install time, so a Windows clone
+# gets CRLF working files and commits LF back -- fine, until someone has it set
+# to false and commits CRLF into a repository everyone else reads as LF. The
+# result is a diff that touches every line of a file nobody edited.
+#
+# This matters more here than in most projects: the load-bearing test asserts the
+# rendered EPUB's text is *byte-identical* to the original. Test fixtures are
+# compared as bytes, so a stray \r in a tracked XHTML fixture is not a cosmetic
+# problem, it is a failing invariant that looks like a rendering bug.
+* text=auto eol=lf
+
+# Never normalize what is not text. The EPUB fixtures are zips, and an EPUB whose
+# bytes git has "helpfully" adjusted is a corrupt archive.
+*.epub binary
+*.kepub.epub binary
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.ttf binary
+*.otf binary
