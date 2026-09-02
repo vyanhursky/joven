@@ -10,9 +10,9 @@ EPUB 3 must be validated *before* conversion. Conversion is always the last step
 
 from __future__ import annotations
 
-import shutil
-import subprocess
 from pathlib import Path
+
+from . import external
 
 KEPUB_SUFFIX = ".kepub.epub"
 
@@ -21,8 +21,11 @@ class KepubError(Exception):
     """Raised when KEPUB conversion fails."""
 
 
+INSTALL_HINT = "install it with: brew install kepubify (macOS) / scoop install kepubify (Windows)"
+
+
 def kepubify_available() -> bool:
-    return shutil.which("kepubify") is not None
+    return external.resolve("kepubify") is not None
 
 
 def kepub_name(epub_path: Path) -> str:
@@ -42,17 +45,17 @@ def kepub_name(epub_path: Path) -> str:
 
 def kepubify(epub_path: Path, out_dir: Path) -> Path:
     """Convert an EPUB to KEPUB, returning the output path."""
-    if not kepubify_available():
-        raise KepubError("kepubify not found on PATH — install with: brew install kepubify")
+    # Resolved, not the bare name: a Windows launcher is often kepubify.cmd, which
+    # CreateProcess cannot start by name. See :mod:`joven.external`.
+    binary = external.resolve("kepubify")
+    if binary is None:
+        raise KepubError(f"kepubify not found on PATH — {INSTALL_HINT}")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / kepub_name(epub_path)
 
-    proc = subprocess.run(  # noqa: S603
-        ["kepubify", "--inplace=false", "--output", str(target), str(epub_path)],
-        capture_output=True,
-        text=True,
-        check=False,
+    proc = external.run(
+        [binary, "--inplace=false", "--output", str(target), str(epub_path)]
     )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout).strip()

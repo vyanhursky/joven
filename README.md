@@ -259,12 +259,12 @@ the three gates in detail: [docs/anatomy-of-a-call.md](docs/anatomy-of-a-call.md
 
 | | |
 |---|---|
-| **Platform** | **macOS on Apple Silicon** — where this was developed and device-verified. CI also runs the suite on Linux. Windows is untested. |
+| **Platform** | **macOS on Apple Silicon** — where this was developed and device-verified. **Linux** and **Windows 10/11** run the full suite in CI, and a whole book has been through the pipeline on each. |
 | **Memory** | 16 GB, which is what sets the model ceiling at 7–14B parameters |
 | **Disk** | ~6 GB for the model, plus room for the outputs |
 | **Python** | 3.11+ (developed on 3.13) |
-| **Homebrew** | for the three external binaries below |
-| **Java** | `epubcheck` is a JAR and needs a JVM; macOS ships one at `/usr/bin/java` |
+| **A package manager** | Homebrew on macOS, [Scoop](https://scoop.sh) or winget on Windows — for the three external binaries below |
+| **Java** | `epubcheck` is a JAR and needs a JVM. macOS ships one at `/usr/bin/java`; on Windows install a JDK (`winget install Microsoft.OpenJDK.21`) if `java -version` comes back empty |
 | **Reader** | A **Kobo** (sideloaded over USB) is the verified target — tested on firmware `4.45.23697`. Apple Books renders the footnotes as popups too. |
 
 Three external tools do work Python should not:
@@ -295,6 +295,32 @@ Any other install route works too — see [the uv docs](https://docs.astral.sh/u
 ```bash
 brew install epubcheck kepubify ollama
 ```
+
+<details>
+<summary><strong>On Windows</strong></summary>
+
+```powershell
+winget install astral-sh.uv Ollama.Ollama Microsoft.OpenJDK.21
+scoop install kepubify epubcheck
+```
+
+Without Scoop, both binaries install by hand. `kepubify` is a single executable —
+download [`kepubify-windows-64bit.exe`](https://github.com/pgaskin/kepubify/releases/latest),
+rename it `kepubify.exe`, and put it in a folder on your `PATH`.
+
+`epubcheck` needs one extra step, because the official download is a JAR and
+**no launcher** — there is nothing for `PATH` to find. Unzip
+[epubcheck](https://github.com/w3c/epubcheck/releases) and point Joven at the jar:
+
+```powershell
+setx JOVEN_EPUBCHECK_JAR "C:\tools\epubcheck-5.1.0\epubcheck.jar"
+```
+
+Open a new terminal afterwards, as `setx` only affects later sessions. Skipping
+this does not fail loudly — `joven verify` reports epubcheck as `SKIPPED` and
+passes, so the one external check on the output silently stops running.
+
+</details>
 
 **3. Joven itself:**
 
@@ -448,6 +474,21 @@ python3.13 -m venv .venv
 # opt in to the real-book tests (the book is never committed)
 JOVEN_TEST_EPUB=/path/to/book.epub ./.venv/bin/pytest
 ```
+
+On Windows the venv puts its executables in `Scripts\`, not `bin/`:
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\pip install -e ".[dev]"
+.\.venv\Scripts\pytest
+$env:JOVEN_TEST_EPUB = "C:\path\to\book.epub"; .\.venv\Scripts\pytest
+```
+
+One Windows-only trap, and it is not Joven's: `pip install -e .` cannot replace a
+file another process has open, so reinstalling while `joven detect` is still
+running leaves a half-uninstalled package behind — a `~oven_ebook_annotator*`
+directory in `site-packages` and `ModuleNotFoundError: No module named 'joven'`
+from a venv that looks fine. Delete that directory and reinstall.
 
 Tests never hit the network — a `StubTranslator` stands in for the LLM everywhere.
 Two guard scripts run in CI, each of which has caught a real bug that survived a

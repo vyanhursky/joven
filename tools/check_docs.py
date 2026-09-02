@@ -65,10 +65,11 @@ def _help(executable: str, *args: str) -> str:
             env=HELP_ENV,
         ).stdout
     except FileNotFoundError:
+        script = r".venv\Scripts\joven.exe" if os.name == "nt" else "./.venv/bin/joven"
         raise SystemExit(
             f"error: {executable!r} is not on PATH.\n"
             f"       Install the package first (pip install -e .), or point at the\n"
-            f"       built script: --executable ./.venv/bin/joven"
+            f"       built script: --executable {script}"
         ) from None
     return ANSI.sub("", out)
 

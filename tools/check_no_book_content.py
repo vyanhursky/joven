@@ -29,6 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from joven.console import force_utf8_output  # noqa: E402
 from joven.epub.archive import EpubArchive  # noqa: E402
 from joven.epub.document import iter_text_units  # noqa: E402
 from joven.epub.package import read_package  # noqa: E402
@@ -104,6 +105,8 @@ def pattern_check() -> int:
 
 
 def main() -> int:
+    # This script prints the excerpts it found, which are Spanish by construction.
+    force_utf8_output()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "epub",

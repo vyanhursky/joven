@@ -6,12 +6,13 @@ from pathlib import Path
 
 import typer
 
+from .console import force_utf8_output
 from .detect.pipeline import detect as run_detect
 from .detect.triage import Triager
 from .epub.archive import EpubArchive, EpubError
 from .epub.document import iter_text_units
 from .epub.package import read_package
-from .kepub import KepubError
+from .kepub import INSTALL_HINT, KepubError
 from .model import Annotation, Sidecar, Status, normalize, occurrence_indices
 from .render import RenderError, render_epub
 from .review import serve as serve_review
@@ -162,7 +163,7 @@ def render(
         )
     elif kepub:
         typer.secho(
-            "warning: kepubify not on PATH — skipped KEPUB (brew install kepubify)",
+            f"warning: kepubify not on PATH — skipped KEPUB ({INSTALL_HINT})",
             fg=typer.colors.YELLOW,
             err=True,
         )
@@ -493,5 +494,15 @@ def add(
     typer.echo(f"  sidecar now has {len(sidecar.annotations)} annotation(s)")
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Console-script entry point.
+
+    The streams are pinned to UTF-8 before Typer can print a word of Spanish
+    through a cp1252 one; see :func:`joven.console.force_utf8_output`.
+    """
+    force_utf8_output()
     app()
+
+
+if __name__ == "__main__":
+    main()

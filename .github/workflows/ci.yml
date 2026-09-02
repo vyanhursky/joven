@@ -13,14 +13,38 @@ concurrency:
 
 jobs:
   test:
-    # The matrix exists to check the requires-python floor rather than to look
-    # thorough: pyproject claims >=3.11 but development happened entirely on
-    # 3.13, so 3.11 and 3.12 were an untested assertion until now.
+    # Two axes, each earning its place. Python: pyproject claims >=3.11 but
+    # development happened entirely on 3.13, so 3.11 and 3.12 were an untested
+    # assertion until now. OS: Windows was untested and had four real bugs in it
+    # -- `.cmd` launchers that shutil.which finds and CreateProcess cannot start,
+    # an HTTP handler that reset the connection instead of answering, cp1252
+    # output, and epubcheck shipping no Windows launcher at all. All four were
+    # invisible to a Linux-only matrix.
+    #
+    # macOS is here despite being the platform this was developed and
+    # device-verified on -- or rather because of it. It was the only platform
+    # whose support rested entirely on the author remembering to run the suite
+    # locally, which is the kind of coverage that holds right up until the release
+    # someone else cuts. It is also the only one that reaches epubcheck through a
+    # Homebrew launcher on PATH, a third route again from Linux's shell wrapper
+    # and Windows' bare jar.
+    #
+    # The full cross-product would be nine jobs to catch nothing: a Python version
+    # difference does not become a different bug on a different OS. Linux, where
+    # the floor actually needs proving, runs all three; the other two run the
+    # floor and the ceiling, which is where a version-specific break would show.
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.12", "3.13"]
-    runs-on: ubuntu-latest
+        include:
+          - {os: ubuntu-latest, python: "3.11"}
+          - {os: ubuntu-latest, python: "3.12"}
+          - {os: ubuntu-latest, python: "3.13"}
+          - {os: windows-latest, python: "3.11"}
+          - {os: windows-latest, python: "3.13"}
+          - {os: macos-latest, python: "3.11"}
+          - {os: macos-latest, python: "3.13"}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -37,7 +61,8 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Install epubcheck
+      - name: Install epubcheck (Linux)
+        if: runner.os == 'Linux'
         run: |
           curl -sSL -o /tmp/epubcheck.zip \
             https://github.com/w3c/epubcheck/releases/download/v5.1.0/epubcheck-5.1.0.zip
@@ -47,14 +72,54 @@ jobs:
           sudo chmod +x /usr/local/bin/epubcheck
           epubcheck --version
 
-      - name: Install kepubify
+      # No launcher is created here on purpose. The official distribution is a jar
+      # and nothing else, which is what a Windows user actually downloads, so this
+      # exercises the JOVEN_EPUBCHECK_JAR route rather than a wrapper invented for
+      # CI's convenience. If that route regresses, epubcheck goes missing and the
+      # assertion below fails.
+      - name: Install epubcheck (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -UseBasicParsing -OutFile epubcheck.zip `
+            https://github.com/w3c/epubcheck/releases/download/v5.1.0/epubcheck-5.1.0.zip
+          Expand-Archive epubcheck.zip -DestinationPath C:\tools
+          "JOVEN_EPUBCHECK_JAR=C:\tools\epubcheck-5.1.0\epubcheck.jar" `
+            | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Install kepubify (Linux)
+        if: runner.os == 'Linux'
         run: |
           curl -sSL -o /tmp/kepubify \
             https://github.com/pgaskin/kepubify/releases/latest/download/kepubify-linux-64bit
           sudo install -m 0755 /tmp/kepubify /usr/local/bin/kepubify
           kepubify --version
 
+      - name: Install kepubify (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          New-Item -ItemType Directory -Force C:\tools | Out-Null
+          Invoke-WebRequest -UseBasicParsing -OutFile C:\tools\kepubify.exe `
+            https://github.com/pgaskin/kepubify/releases/latest/download/kepubify-windows-64bit.exe
+          "C:\tools" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          C:\tools\kepubify.exe --version
+
+      # One brew call for both, which is the route the README actually documents.
+      # This is the only job that reaches epubcheck through a launcher Homebrew put
+      # on PATH -- the case `external.resolve` has to keep working for the platform
+      # most users are on.
+      - name: Install epubcheck and kepubify (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install epubcheck kepubify
+          epubcheck --version
+          kepubify --version
+
       - name: Install the package
+        shell: bash
         run: pip install -e '.[dev]'
 
       - name: Lint
@@ -70,11 +135,14 @@ jobs:
       # and the one ollama test skips too, since no model server runs in CI. So
       # assert the specific subset that must not skip.
       - name: Assert the epubcheck tests actually ran
+        # Explicitly bash: the Windows runners default to pwsh, where this reads
+        # as a syntax error rather than as the check it is.
+        shell: bash
         run: |
           out=$(pytest -q -m "epubcheck and not realbook" -rs 2>&1)
           echo "$out"
           if echo "$out" | grep -q "skipped"; then
-            echo "::error::epubcheck-dependent tests skipped -- is epubcheck on PATH?"
+            echo "::error::epubcheck-dependent tests skipped -- is epubcheck on PATH, or JOVEN_EPUBCHECK_JAR set?"
             exit 1
           fi
 

@@ -187,6 +187,17 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self) -> None:  # noqa: N802 - http.server API
+        # Drain the body before anything that can return early. Replying while
+        # unread bytes are still in the socket makes Windows reset the connection
+        # rather than close it, so the client gets WinError 10053 instead of the
+        # status code — the refusal below would reach the page as a dropped
+        # connection rather than as a 415. Harmless on Unix, required here.
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        raw = self.rfile.read(length) if length > 0 else b""
+
         if not self.path.startswith("/api/annotation/"):
             self._send(404, b"not found", "text/plain")
             return
@@ -198,9 +209,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(415, b'{"error":"expected application/json"}', "application/json")
             return
         annotation_id = self.path.rsplit("/", 1)[-1]
-        length = int(self.headers.get("Content-Length", "0"))
         try:
-            body = json.loads(self.rfile.read(length) or b"{}")
+            body = json.loads(raw or b"{}")
             updated = self.state.update(
                 annotation_id, body.get("status", "approved"), body.get("translation")
             )
