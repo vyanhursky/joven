@@ -1,6 +1,6 @@
 [project]
 name = "joven-ebook-annotator"
-version = "1.0.0b3"
+version = "1.0.0b4"
 description = "Insert clickable translation footnotes for foreign-language passages in an EPUB"
 readme = "README.md"
 requires-python = ">=3.11"

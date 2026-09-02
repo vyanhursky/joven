@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.0.0b4 — 2026-09-02
 
 **Windows is a supported platform.** Everything here was found by running the tool
 on Windows 11 for the first time — the suite, the guard scripts, and a whole novel
