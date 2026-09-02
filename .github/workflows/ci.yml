@@ -21,10 +21,18 @@ jobs:
     # output, and epubcheck shipping no Windows launcher at all. All four were
     # invisible to a Linux-only matrix.
     #
-    # The full cross-product would be six jobs to catch nothing: a Python version
-    # difference does not become a different bug on a different OS. Windows runs
-    # the floor and the ceiling, which is where a version-specific break would
-    # show.
+    # macOS is here despite being the platform this was developed and
+    # device-verified on -- or rather because of it. It was the only platform
+    # whose support rested entirely on the author remembering to run the suite
+    # locally, which is the kind of coverage that holds right up until the release
+    # someone else cuts. It is also the only one that reaches epubcheck through a
+    # Homebrew launcher on PATH, a third route again from Linux's shell wrapper
+    # and Windows' bare jar.
+    #
+    # The full cross-product would be nine jobs to catch nothing: a Python version
+    # difference does not become a different bug on a different OS. Linux, where
+    # the floor actually needs proving, runs all three; the other two run the
+    # floor and the ceiling, which is where a version-specific break would show.
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +42,8 @@ jobs:
           - {os: ubuntu-latest, python: "3.13"}
           - {os: windows-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
+          - {os: macos-latest, python: "3.11"}
+          - {os: macos-latest, python: "3.13"}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -96,6 +106,17 @@ jobs:
             https://github.com/pgaskin/kepubify/releases/latest/download/kepubify-windows-64bit.exe
           "C:\tools" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
           C:\tools\kepubify.exe --version
+
+      # One brew call for both, which is the route the README actually documents.
+      # This is the only job that reaches epubcheck through a launcher Homebrew put
+      # on PATH -- the case `external.resolve` has to keep working for the platform
+      # most users are on.
+      - name: Install epubcheck and kepubify (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install epubcheck kepubify
+          epubcheck --version
+          kepubify --version
 
       - name: Install the package
         shell: bash
