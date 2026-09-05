@@ -144,6 +144,19 @@ seconds instead of an hour. `--style inline` renders `Vaya con Dios. [Go with Go
 directly in the prose — useless on a device, but it makes a diff readable and it was
 the renderer that proved the insertion pipeline in the first place.
 
+### Ollama on another machine
+
+`detect` talks to Ollama at `http://localhost:11434`. If yours listens elsewhere —
+a desktop with the GPU, a non-default port — pass the address, or set it once:
+
+```bash
+joven detect book.epub --ollama-url http://192.168.1.20:11434
+export JOVEN_OLLAMA_URL=http://192.168.1.20:11434
+```
+
+The book's paragraphs travel to that server, so this is the one setting that can
+take the text off the machine. Keep it on your own network.
+
 ---
 
 ## Kobo notes

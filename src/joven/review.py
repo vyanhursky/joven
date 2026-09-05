@@ -297,6 +297,7 @@ PAGE = """<!doctype html>
   .card.done { opacity:.5; }
   .card.rejected { border-left:3px solid var(--warn); }
   .card.approved, .card.edited { border-left:3px solid var(--accent); }
+  .card:focus { outline:2px solid var(--accent); outline-offset:2px; }
   .meta { display:flex; gap:.7rem; align-items:center; flex-wrap:wrap;
           color:var(--muted); font-size:.75rem; margin-bottom:.5rem; }
   .conf { font-variant-numeric:tabular-nums; font-weight:600; }
@@ -332,18 +333,45 @@ PAGE = """<!doctype html>
   <div class="bar"><i id="bar" style="width:0%"></i></div>
   <div class="counts" id="counts">loading…</div>
   <label class="counts"><input type="checkbox" id="hide"/> hide reviewed</label>
-  <span class="counts"><kbd>a</kbd> approve <kbd>r</kbd> reject <kbd>e</kbd> edit</span>
+  <span class="counts"><kbd>j</kbd>/<kbd>k</kbd> move <kbd>a</kbd> approve <kbd>r</kbd> reject
+    <kbd>e</kbd> edit <kbd>ctrl-enter</kbd> save</span>
 </header>
 <main id="list"><div class="empty">loading…</div></main>
 <script>
 let data = {annotations: [], counts: {}, total: 0, reviewed: 0};
 let hideReviewed = false;
+// The card the shortcuts act on, tracked by id rather than by element. render()
+// rebuilds the list, which drops focus; without this the next keypress went to
+// whichever card was first on the page — with "hide reviewed" off, the one you
+// had just decided.
+let focusId = null;
 
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function paragraph(a) {
   return a.segments.map(s =>
     s.spanish ? `<mark>${esc(s.text)}</mark>` : esc(s.text)).join('');
+}
+
+const cards = () => [...document.querySelectorAll('.card')];
+const cardFor = id => id ? document.querySelector(`.card[data-id="${id}"]`) : null;
+const unreviewed = c => !c.classList.contains('done');
+
+function focusCard(id) {
+  const el = cardFor(id);
+  if (!el) return;
+  focusId = id;
+  el.focus({preventScroll: true});
+  el.scrollIntoView({block: 'nearest'});
+}
+
+// Where to land after deciding `id`: the next unreviewed card below it, else the
+// first unreviewed one anywhere, else stay where you are.
+function nextAfter(id) {
+  const all = cards();
+  const i = all.findIndex(c => c.dataset.id === id);
+  const target = all.slice(i + 1).find(unreviewed) || all.find(unreviewed);
+  return target ? target.dataset.id : id;
 }
 
 function render() {
@@ -384,10 +412,18 @@ function render() {
       </div>
     </article>`;
   }).join('');
+
+  // Put the keyboard back where it was, or on the first thing left to do.
+  if (!cardFor(focusId)) {
+    const first = cards().find(unreviewed) || cards()[0];
+    focusId = first ? first.dataset.id : null;
+  }
+  focusCard(focusId);
 }
 
 async function decide(card, status) {
   const id = card.dataset.id;
+  const next = nextAfter(id);
   const translation = card.querySelector('textarea').value;
   const res = await fetch('/api/annotation/' + id, {
     method: 'POST',
@@ -401,7 +437,16 @@ async function decide(card, status) {
   data.counts = out.counts;
   data.reviewed = Object.entries(out.counts)
     .filter(([k]) => k !== 'auto').reduce((n, [,v]) => n + v, 0);
+  focusId = next;
   render();
+}
+
+function step(delta) {
+  const all = cards();
+  if (!all.length) return;
+  const i = Math.max(0, all.findIndex(c => c.dataset.id === focusId));
+  const j = Math.min(all.length - 1, Math.max(0, i + delta));
+  focusCard(all[j].dataset.id);
 }
 
 document.addEventListener('click', e => {
@@ -412,9 +457,27 @@ document.addEventListener('click', e => {
   decide(card, act === 'save' ? 'edited' : act);
 });
 
+// Clicking into a card, or tabbing to it, makes it the current one.
+document.addEventListener('focusin', e => {
+  const card = e.target.closest?.('.card');
+  if (card) focusId = card.dataset.id;
+});
+
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'TEXTAREA' || e.metaKey || e.ctrlKey) return;
-  const card = document.activeElement?.closest?.('.card') || document.querySelector('.card');
+  if (e.target.tagName === 'TEXTAREA') {
+    const card = e.target.closest('.card');
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      decide(card, 'edited');
+    } else if (e.key === 'Escape') {
+      card.focus();
+    }
+    return;
+  }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'j') { e.preventDefault(); step(1); return; }
+  if (e.key === 'k') { e.preventDefault(); step(-1); return; }
+  const card = cardFor(focusId);
   if (!card) return;
   if (e.key === 'a') { decide(card, 'approved'); }
   else if (e.key === 'r') { decide(card, 'rejected'); }

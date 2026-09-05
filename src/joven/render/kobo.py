@@ -49,6 +49,8 @@ _WRAPPER_IDS = {"book-columns", "book-inner"}
 def _unwrap(element: etree._Element) -> None:
     """Replace ``element`` with its own text and children, preserving both tails."""
     parent = element.getparent()
+    if parent is None:
+        raise ValueError("cannot unwrap the root element")
     index = parent.index(element)
     previous = element.getprevious()
 
@@ -72,6 +74,8 @@ def _unwrap(element: etree._Element) -> None:
 def _drop(element: etree._Element) -> None:
     """Remove ``element`` entirely, but never the text that followed it."""
     parent = element.getparent()
+    if parent is None:
+        raise ValueError("cannot drop the root element")
     if element.tail:
         previous = element.getprevious()
         if previous is not None:

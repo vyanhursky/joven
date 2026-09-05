@@ -430,9 +430,11 @@ def installed_models(base_url: str = DEFAULT_OLLAMA_URL) -> list[str]:
     return [m["name"] for m in response.json().get("models", [])]
 
 
-def get_translator(backend: str, model: str = DEFAULT_MODEL) -> Translator:
+def get_translator(
+    backend: str, model: str = DEFAULT_MODEL, base_url: str = DEFAULT_OLLAMA_URL
+) -> Translator:
     if backend == "stub":
         return StubTranslator()
     if backend == "ollama":
-        return OllamaTranslator(model=model)
+        return OllamaTranslator(model=model, base_url=base_url)
     raise ValueError(f"unknown backend {backend!r} — choose from: ollama, stub")

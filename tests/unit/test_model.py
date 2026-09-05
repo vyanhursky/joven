@@ -272,3 +272,27 @@ def test_merge_keeps_all_repeated_paragraphs() -> None:
     stats = sidecar.merge(incoming)
     assert stats["added"] == 3
     assert len(sidecar.annotations) == 3
+
+
+# ------------------------------------------------------------ source identity
+
+
+def test_source_matches_the_file_it_was_detected_from(tmp_path: Path) -> None:
+    from joven.model import file_sha256
+
+    book = tmp_path / "book.epub"
+    book.write_bytes(b"not really an epub, but hashable")
+    assert Sidecar(source_sha256=file_sha256(book)).source_matches(book) is True
+
+
+def test_source_matches_says_false_for_a_different_file(tmp_path: Path) -> None:
+    book = tmp_path / "book.epub"
+    book.write_bytes(b"some bytes")
+    assert Sidecar(source_sha256="0" * 64).source_matches(book) is False
+
+
+def test_source_matches_is_unknown_without_a_recorded_hash(tmp_path: Path) -> None:
+    """A hand-built sidecar has no hash; that is not a mismatch."""
+    book = tmp_path / "book.epub"
+    book.write_bytes(b"some bytes")
+    assert Sidecar().source_matches(book) is None
