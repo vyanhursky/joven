@@ -56,7 +56,7 @@ def _is_abbreviation(text: str, dot_pos: int) -> bool:
 def _is_initial(text: str, dot_pos: int) -> bool:
     """True for a single-letter initial like the 'J.' in 'J. Grady'."""
     match = _WORD_BEFORE.search(text[:dot_pos + 1])
-    return bool(match) and len(match.group(1)) == 1
+    return match is not None and len(match.group(1)) == 1
 
 
 def segment(paragraph: str) -> list[Segment]:

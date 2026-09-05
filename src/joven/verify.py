@@ -301,7 +301,7 @@ def check_ids_unique(produced: EpubArchive) -> Finding:
             root = parse(produced.get(href)).getroot()
         except Exception:  # noqa: BLE001
             continue
-        ids = [el.get("id") for el in root.iter() if isinstance(el.tag, str) and el.get("id")]
+        ids = [i for el in root.iter() if isinstance(el.tag, str) and (i := el.get("id"))]
         dupes = sorted({i for i in ids if ids.count(i) > 1})
         if dupes:
             problems.append(f"{href}: {dupes}")

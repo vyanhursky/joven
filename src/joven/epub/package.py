@@ -36,9 +36,10 @@ class Package:
 def _opf_path(archive: EpubArchive) -> str:
     root = etree.fromstring(archive.get(CONTAINER_PATH))
     rootfile = root.find(f".//{{{CONTAINER_NS}}}rootfile")
-    if rootfile is None or not rootfile.get("full-path"):
+    full_path = rootfile.get("full-path") if rootfile is not None else None
+    if not full_path:
         raise EpubError(f"{CONTAINER_PATH} does not declare a rootfile full-path")
-    return rootfile.get("full-path")
+    return full_path
 
 
 def _unique_identifier(root: etree._Element) -> str | None:
@@ -98,9 +99,9 @@ def read_package(archive: EpubArchive) -> Package:
         metadata["identifier"] = identifier
 
     manifest = {
-        item.get("id"): resolve(item.get("href"))
+        item_id: resolve(href)
         for item in root.findall(f".//{{{OPF_NS}}}manifest/{{{OPF_NS}}}item")
-        if item.get("id") and item.get("href")
+        if (item_id := item.get("id")) and (href := item.get("href"))
     }
 
     spine_hrefs = [

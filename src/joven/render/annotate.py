@@ -231,7 +231,9 @@ class FootnoteRenderer(_Base):
         *and every note after it*. End of file is a boundary it must respect.
         """
         html = etree.Element(
-            f"{{{XHTML_NS}}}html", nsmap={None: XHTML_NS, "epub": EPUB_NS}
+            f"{{{XHTML_NS}}}html",
+            # a None key is the default namespace; lxml-stubs does not model it
+            nsmap={None: XHTML_NS, "epub": EPUB_NS},  # type: ignore[dict-item]
         )
         head = etree.SubElement(html, f"{{{XHTML_NS}}}head")
         etree.SubElement(head, f"{{{XHTML_NS}}}title").text = "Note"
@@ -275,12 +277,12 @@ class InlineRenderer(_Base):
 
 
 RENDERERS: dict[str, type[Renderer]] = {
-    "footnote": FootnoteRenderer,  # type: ignore[dict-item]
-    "inline": InlineRenderer,  # type: ignore[dict-item]
+    "footnote": FootnoteRenderer,
+    "inline": InlineRenderer,
 }
 
 
 def get_renderer(name: str) -> Renderer:
     if name in RENDERERS:
-        return RENDERERS[name]()  # type: ignore[abstract]
+        return RENDERERS[name]()
     raise RenderError(f"unknown renderer {name!r} — choose from {sorted(RENDERERS)}")

@@ -51,9 +51,9 @@ def build_nav(archive: EpubArchive, package: Package) -> bytes:
         for point in root.iter(f"{{{NCX_NS}}}navPoint"):
             label = point.find(f"{{{NCX_NS}}}navLabel/{{{NCX_NS}}}text")
             content = point.find(f"{{{NCX_NS}}}content")
-            if content is None or not content.get("src"):
+            src = content.get("src") if content is not None else None
+            if not src:
                 continue
-            src = content.get("src")
             absolute = posixpath.normpath(posixpath.join(ncx_base, src)) if ncx_base else src
             entries.append((absolute, (label.text or "").strip() if label is not None else "—"))
 
@@ -148,7 +148,9 @@ def fix_content_type_meta(archive: EpubArchive, package: Package) -> list[str]:
             # corrected attribute name would be tidier markup carrying the same
             # noise.
             if meta.get("value") is not None and meta.get("content") is None:
-                meta.getparent().remove(meta)
+                parent = meta.getparent()
+                if parent is not None:
+                    parent.remove(meta)
                 changed = True
         if changed:
             archive.replace(href, serialize(tree, original=original))
@@ -313,7 +315,9 @@ def modernize_metadata(metadata: etree._Element) -> list[str]:
     """
     removed: list[str] = []
     for element in metadata.iter():
-        for name in list(element.attrib):
+        # str() is for the type checker: lxml hands back str, but its stubs also
+        # allow bytes because that is what it accepts on the way in.
+        for name in [str(n) for n in element.attrib]:
             if name.startswith(f"{{{OPF_NS}}}"):
                 local = name.split("}", 1)[1]
                 # 'refines' and 'property' are legitimate EPUB 3 spellings
@@ -412,7 +416,8 @@ def add_epub_namespace(tree: etree._ElementTree) -> etree._ElementTree:
     nsmap["epub"] = "http://www.idpf.org/2007/ops"
     nsmap.setdefault(None, XHTML_NS)
 
-    rebuilt = etree.Element(root.tag, attrib=dict(root.attrib), nsmap=nsmap)
+    # lxml accepts a None key for the default namespace; lxml-stubs does not know.
+    rebuilt = etree.Element(root.tag, attrib=dict(root.attrib), nsmap=nsmap)  # type: ignore[misc,arg-type]
     rebuilt.text = root.text
     rebuilt.tail = root.tail
     for child in root:
