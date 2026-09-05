@@ -223,6 +223,22 @@ class Sidecar:
             counts[str(annotation.status)] += 1
         return counts
 
+    def source_matches(self, epub: str | Path) -> bool | None:
+        """Whether ``epub`` is the file this sidecar was detected from.
+
+        ``None`` when the sidecar never recorded a hash (hand-built, or from a
+        very old run). A ``False`` is a warning, not an error: the same edition
+        re-saved by Calibre hashes differently and renders fine, and the
+        per-paragraph check in :meth:`Annotation.validate_against` is the hard
+        gate. What this catches is the *confusing* failure — a sidecar from a
+        different edition, which otherwise surfaces as one baffling "source text
+        drifted" error deep inside rendering rather than as the plain fact that
+        the files differ.
+        """
+        if not self.source_sha256:
+            return None
+        return file_sha256(epub) == self.source_sha256
+
     # ---------------------------------------------------------------- merging
 
     def merge(self, incoming: list[Annotation]) -> dict[str, int]:

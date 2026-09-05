@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import NoReturn
 
 import typer
 
@@ -17,7 +18,7 @@ from .model import Annotation, Sidecar, Status, normalize, occurrence_indices
 from .render import RenderError, render_epub
 from .review import serve as serve_review
 from .trace import Outcome, Tracer, load_trace, reusable_answers
-from .translate import get_translator, installed_models, ollama_available
+from .translate import DEFAULT_OLLAMA_URL, get_translator, installed_models, ollama_available
 from .verify import verify as run_verify
 
 app = typer.Typer(
@@ -34,7 +35,7 @@ def _load(path: Path) -> EpubArchive:
         _fail(exc)
 
 
-def _fail(exc: Exception) -> None:
+def _fail(exc: Exception) -> NoReturn:
     """Report an unusable book as an error, not a traceback.
 
     ``DocumentError`` is an ``EpubError``, so this covers both the archive being
@@ -43,6 +44,24 @@ def _fail(exc: Exception) -> None:
     """
     typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
     raise typer.Exit(2) from exc
+
+
+def _warn_if_different_file(sidecar: Sidecar, sidecar_path: Path, epub: Path) -> None:
+    """Say plainly when a sidecar was detected from some other file.
+
+    A warning, not an error: the same edition re-saved by Calibre hashes
+    differently and renders fine. A different *edition* fails per paragraph with
+    "source text drifted" deep inside rendering — this line is what makes that
+    error make sense when it arrives.
+    """
+    if sidecar.source_matches(epub) is False:
+        typer.secho(
+            f"warning: {sidecar_path.name} was detected from a different file than "
+            f"{epub.name} (sha256 differs). The same edition re-saved is fine; a "
+            "different edition will fail with 'source text drifted'.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
 
 
 @app.command()
@@ -118,6 +137,8 @@ def render(
     """
     _load(epub)  # fail fast on DRM / corruption before doing any work
     sidecar = Sidecar.load(annotations) if annotations else None
+    if sidecar is not None and annotations is not None:
+        _warn_if_different_file(sidecar, annotations, epub)
 
     try:
         result = render_epub(epub, sidecar, out_dir, renderer=style, make_kepub=kepub)
@@ -215,6 +236,12 @@ def detect(
         "ollama", "--backend", help="ollama | stub | none (tier 1 only)"
     ),
     model: str = typer.Option("qwen3:8b", "--model", help="Ollama model tag"),
+    ollama_url: str = typer.Option(
+        DEFAULT_OLLAMA_URL,
+        "--ollama-url",
+        envvar="JOVEN_OLLAMA_URL",
+        help="Where Ollama is listening",
+    ),
     limit: int | None = typer.Option(None, "--limit", help="Only scan the first N paragraphs"),
     merge: bool = typer.Option(
         True, "--merge/--overwrite", help="Merge into an existing sidecar, keeping human edits"
@@ -240,23 +267,26 @@ def detect(
 
     translator = None
     if backend not in {"none", ""}:
-        if backend == "ollama" and not ollama_available():
+        if backend == "ollama" and not ollama_available(ollama_url):
             typer.secho(
-                "error: ollama is not running — start it with: ollama serve",
+                f"error: ollama is not running at {ollama_url} — start it with: ollama serve\n"
+                "       (or point --ollama-url / JOVEN_OLLAMA_URL at a server that is)",
                 fg=typer.colors.RED,
                 err=True,
             )
             raise typer.Exit(2)
-        if backend == "ollama" and model not in installed_models():
-            available = installed_models()
-            typer.secho(
-                f"error: model {model!r} not installed. Available: {available or 'none'}\n"
-                f"       install with: ollama pull {model}",
-                fg=typer.colors.RED,
-                err=True,
-            )
-            raise typer.Exit(2)
-        translator = get_translator(backend, model)
+        if backend == "ollama":
+            available = installed_models(ollama_url)
+            if model not in available:
+                typer.secho(
+                    f"error: model {model!r} not installed at {ollama_url}. "
+                    f"Available: {available or 'none'}\n"
+                    f"       install with: ollama pull {model}",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+                raise typer.Exit(2)
+        translator = get_translator(backend, model, base_url=ollama_url)
 
     if translator is None:
         typer.secho(
@@ -412,6 +442,8 @@ def review(
     review is never wasted work. Pass --epub to see the surrounding prose, which
     is what makes short fragments judgeable.
     """
+    if epub is not None:
+        _warn_if_different_file(Sidecar.load(annotations), annotations, epub)
     serve_review(annotations, epub, port=port, open_browser=open_browser)
 
 

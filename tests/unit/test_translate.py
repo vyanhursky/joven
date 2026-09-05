@@ -160,3 +160,13 @@ def test_live_model_does_not_bleed_context(request: pytest.FixtureRequest) -> No
     assert verdict.translation
     # must not echo a translation of the context question
     assert "how old" not in verdict.translation.lower()
+
+
+def test_get_translator_passes_the_server_url_through() -> None:
+    """``--ollama-url`` has to reach the client, or the flag is decoration."""
+    from joven.translate import OllamaTranslator
+
+    translator = get_translator("ollama", "qwen3:8b", base_url="http://elsewhere:11434")
+    assert isinstance(translator, OllamaTranslator)
+    assert translator.base_url == "http://elsewhere:11434"
+    assert translator.model == "qwen3:8b"

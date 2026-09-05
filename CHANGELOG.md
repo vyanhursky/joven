@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased
+
+Small gaps found by reading the code cold after the Windows port, none of them
+visible from a green suite.
+
+### Fixed
+
+- **The review page keeps its place.** Every decision re-rendered the list, which
+  dropped keyboard focus, so the next `a` or `r` went to whichever card was first
+  on the page — with *hide reviewed* off, the card you had just decided. Focus now
+  follows the annotation, not the DOM node, and a decision moves to the next
+  unreviewed card.
+- **`render` and `review` say when a sidecar belongs to a different file.** Every
+  `detect` recorded the source's SHA-256 and nothing ever read it back, so a
+  sidecar from another edition surfaced only as a `source text drifted` error deep
+  inside rendering. The plain fact is now stated first, as a warning: the same
+  edition re-saved by Calibre hashes differently and renders fine, and the
+  per-paragraph check remains the hard gate.
+
+### Added
+
+- **`joven detect --ollama-url`**, also read from `JOVEN_OLLAMA_URL`. The server
+  address was a constant, so an Ollama on another host or port was unreachable.
+- **`j` / `k`** move between review cards, and **Ctrl-Enter** saves an edit from
+  inside the text box.
+
+### Infrastructure
+
+- **mypy runs in CI**, with `lxml-stubs`. Its first pass raised 21 findings, every
+  one an Optional from lxml that the code assumed non-None — `getparent()` on
+  what could be the root, `find()` results used without a check. None was a live
+  bug; each was the shape of one that ruff cannot see.
+- **A GitHub release is created from every tag**, with the wheel and sdist
+  attached and the CHANGELOG section for that version as its notes. A tag whose
+  version has no CHANGELOG section fails before the PyPI upload, not after, since
+  the version number is spent either way (`tools/changelog_section.py`).
+
 ## v1.0.0b4 — 2026-09-02
 
 **Windows is a supported platform.** Everything here was found by running the tool
