@@ -39,7 +39,9 @@ def default_home() -> Path:
 
 def safe_filename(name: str) -> str:
     """A filename that cannot escape its directory or upset a filesystem."""
-    name = Path(name).name  # no directories, whatever the browser sent
+    # No directories, whatever the browser sent -- and a Windows browser may send
+    # backslashes to a server running on a system whose Path does not split them.
+    name = re.split(r"[\\/]", name)[-1]
     name = _UNSAFE.sub("_", name).strip(" .") or "book.epub"
     if not name.lower().endswith(".epub"):
         name += ".epub"
