@@ -228,31 +228,40 @@ def test_a_second_job_while_one_runs_is_refused(ui, sample_epub: Path) -> None:
 def test_cancel_stops_a_detect_and_keeps_what_it_answered(ui, sample_epub: Path) -> None:
     client, sha = _with_book(ui, sample_epub)
     httpd, state = ui
-    # Slow the stub down enough that a cancel lands mid-book.
+    # A translator that answers once, then holds the run until the test has sent
+    # its cancel -- so the cancel lands mid-book on every machine, fast or slow.
     from joven.ui import jobs
 
     real = jobs.make_translator
+    first_answered = threading.Event()
+    cancel_sent = threading.Event()
 
-    class Slow:
-        name = "slow"
+    class Held:
+        name = "held"
 
         def __init__(self, inner):
             self.inner = inner
 
+        def _gate(self):
+            if first_answered.is_set():
+                cancel_sent.wait(10)
+            first_answered.set()
+
         def adjudicate(self, text, context=""):
-            time.sleep(0.05)
+            self._gate()
             return self.inner.adjudicate(text, context)
 
         def translate(self, text, context=""):
-            time.sleep(0.05)
+            self._gate()
             return self.inner.translate(text, context)
 
-    jobs.make_translator = lambda backend, model, settings: Slow(real("stub", model, settings))
+    jobs.make_translator = lambda backend, model, settings: Held(real("stub", model, settings))
     try:
         client.post(f"/api/books/{sha}/detect", {"backend": "stub"})
-        time.sleep(0.15)
+        assert first_answered.wait(10)
         status, body = client.post("/api/jobs/cancel")
         assert status == 200 and body["cancelled"] is True
+        cancel_sent.set()
         done = client.wait()
     finally:
         jobs.make_translator = real
