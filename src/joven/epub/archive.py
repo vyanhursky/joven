@@ -199,6 +199,19 @@ class EpubArchive:
                 return
         raise KeyError(after)
 
+    def remove(self, name: str) -> None:
+        """Drop an entry outright.
+
+        Rendering never calls this -- "no entry may disappear" is one of its
+        invariants. Un-annotating does: the note documents a previous render added
+        have to go somewhere, and that somewhere is nowhere.
+        """
+        for i, entry in enumerate(self._entries):
+            if entry.name == name:
+                del self._entries[i]
+                return
+        raise KeyError(name)
+
     # ---------------------------------------------------------------- writing
 
     def write(self, path: str | Path) -> None:

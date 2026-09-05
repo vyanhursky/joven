@@ -334,6 +334,7 @@ def _run_pooled(
     scan: Callable[[_Job], _Scanned],
     finish: Callable[[_Scanned], None],
     workers: int,
+    should_stop: Callable[[], bool],
 ) -> None:
     """Scan on a pool, finish in order.
 
@@ -350,7 +351,9 @@ def _run_pooled(
             pending.append(pool.submit(scan, job))
         while pending:
             finish(pending.popleft().result())
-            if (following := next(jobs, None)) is not None:
+            # A stop request drains what is in flight -- those calls are already
+            # being paid for -- and submits nothing more.
+            if not should_stop() and (following := next(jobs, None)) is not None:
                 pending.append(pool.submit(scan, following))
     except BaseException:
         pool.shutdown(wait=False, cancel_futures=True)
@@ -372,6 +375,7 @@ def detect(
     context_chars: int = CONTEXT_CHARS,
     similarity_veto: float = SIMILARITY_VETO,
     on_progress: Callable[[Progress], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> tuple[Sidecar, DetectResult]:
     """Scan a book and produce candidate annotations plus a full decision trace.
 
@@ -389,6 +393,10 @@ def detect(
 
     ``workers`` above 1 scans that many paragraphs concurrently. The trace, the
     sidecar and ``on_progress`` see paragraphs in book order regardless.
+
+    ``should_stop`` is polled between paragraphs; when it returns True the scan
+    ends early and returns what it has. Everything already answered is in the
+    trace, so a stopped run resumes like an interrupted one.
     """
     source = Path(source)
     triager = triager or Triager()
@@ -447,14 +455,17 @@ def detect(
                 )
             )
 
+    halt = should_stop or (lambda: False)
     if workers <= 1:
         for job in work:
+            if halt():
+                break
             finish(scan(job))
     else:
         # Build the detectors on this thread first. Their caches are not locked,
         # and the first paragraphs would otherwise each build their own.
         triager.classify("Vaya con Dios.")
-        _run_pooled(work, scan, finish, workers)
+        _run_pooled(work, scan, finish, workers, halt)
 
     result.merge_stats = sidecar.merge(result.annotations)
     return sidecar, result

@@ -22,6 +22,7 @@ from .epub.package import read_package
 from .kepub import INSTALL_HINT, KepubError
 from .model import Annotation, Sidecar, Status, normalize, occurrence_indices
 from .render import RenderError, render_epub
+from .render.strip import count_markers, strip_annotations
 from .review import serve as serve_review
 from .suspicion import suspicions
 from .trace import Outcome, Tracer, load_trace, reusable_answers
@@ -33,6 +34,7 @@ from .translate import (
     openai_available,
     openai_models,
 )
+from .ui import serve as serve_ui
 from .verify import verify as run_verify
 
 app = typer.Typer(
@@ -144,6 +146,11 @@ def inspect(
     typer.secho(f"\n{epub.name}", bold=True)
     typer.echo(f"  size          {epub.stat().st_size:,} bytes")
     typer.echo(f"  entries       {len(archive.names())}")
+    if markers := count_markers(archive):
+        typer.secho(
+            f"  joven markers {markers}  <- this is a Joven output; see: joven strip",
+            fg=typer.colors.YELLOW,
+        )
     typer.echo(f"  OPF           {package.opf_path}")
     typer.echo(f"  EPUB version  {package.version}")
     for key, value in package.metadata.items():
@@ -203,10 +210,16 @@ def render(
     With no sidecar this is a pure passthrough — the lossless round-trip that
     every other guarantee is built on.
     """
-    _load(epub)  # fail fast on DRM / corruption before doing any work
+    archive = _load(epub)  # fail fast on DRM / corruption before doing any work
     sidecar = Sidecar.load(annotations) if annotations else None
     if sidecar is not None and annotations is not None:
         _warn_if_different_file(sidecar, annotations, epub)
+        if markers := count_markers(archive):
+            _error(
+                f"{epub.name} already carries {markers} Joven footnote markers — it is a "
+                "Joven output, and rendering onto it would double every marker.\n"
+                f"       Render from the original, or recover one: joven strip {epub.name}"
+            )
 
     try:
         result = render_epub(epub, sidecar, out_dir, renderer=style, make_kepub=kepub)
@@ -341,7 +354,12 @@ def detect(
     Every option marked [config: …] falls back to joven.toml or a JOVEN_* variable;
     `joven config` shows the effective values.
     """
-    _load(epub)
+    if markers := count_markers(_load(epub)):
+        _warn(
+            f"{epub.name} already carries {markers} Joven footnote markers. Detection "
+            "ignores them, but render will refuse this file; use the original, or "
+            f"recover one with: joven strip {epub.name}"
+        )
     settings = _settings().settings
     backend = backend or settings.backend
     model = model or settings.model
@@ -582,6 +600,52 @@ def review(
     if epub is not None:
         _warn_if_different_file(Sidecar.load(annotations), annotations, epub)
     serve_review(annotations, epub, port=port, open_browser=open_browser)
+
+
+@app.command()
+def strip(
+    epub: Path = typer.Argument(..., exists=True, dir_okay=False, help="A Joven output"),
+    out_dir: Path = typer.Option(Path("out"), "-o", "--out", help="Output directory"),
+) -> None:
+    """Take Joven's footnotes back out of a book it produced.
+
+    For when the annotated copy is the only copy you have left -- it went into the
+    library and the original did not. Removes every marker and note document and
+    the appended CSS, leaving the prose exactly as the original had it. It does not
+    undo an EPUB 2 -> 3 package upgrade; the result is a clean EPUB 3.
+    """
+    archive = _load(epub)
+    if not count_markers(archive):
+        typer.echo(f"{epub.name} carries no Joven annotations — nothing to strip")
+        return
+    result = strip_annotations(archive)
+    stem = epub.name.removesuffix(".kepub.epub").removesuffix(".epub")
+    stem = stem.removesuffix(".annotated")
+    target = out_dir / f"{stem}.stripped.epub"
+    archive.write(target)
+    typer.echo(
+        f"removed {result.markers_removed} marker(s) from {len(result.documents_touched)} "
+        f"document(s), {result.notes_removed} note document(s)"
+        + (f", and the footnote CSS from {result.stylesheet}" if result.stylesheet else "")
+    )
+    typer.secho(f"wrote {target}  ({target.stat().st_size:,} bytes)", fg=typer.colors.GREEN)
+
+
+@app.command()
+def ui(
+    port: int = typer.Option(8770, "--port"),
+    open_browser: bool = typer.Option(True, "--open/--no-open"),
+    home: Path | None = typer.Option(
+        None, "--home", help="Where books and their sidecars live [default: ~/.joven]"
+    ),
+) -> None:
+    """The whole workflow in the browser: choose a book, detect, review, render, verify.
+
+    Books are copied into a working directory keyed by their hash, and every step
+    calls exactly what the matching command calls. Ctrl-C stops the server; a
+    running detect has already written its trace, so nothing is lost.
+    """
+    serve_ui(home=home, port=port, open_browser=open_browser)
 
 
 @app.command()

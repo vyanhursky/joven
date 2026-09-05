@@ -130,7 +130,17 @@ coverage once documented.
 
 ---
 
-## PR 3 — Joven in the browser
+## PR 3 — Joven in the browser *(done)*
+
+Shipped as `joven ui`; see [browser-ui.md](browser-ui.md). Built as option A below,
+with the span editing deferred from PR 1. Two of the open questions resolved
+themselves: uploads copy the file (cheap, simple), and `joven review` stays as a
+separate command sharing the same payload code rather than being folded in.
+
+Pointing the UI at a real Calibre library also turned up a gap the CLI had never
+hit: the only copy of a book on disk was a previous Joven output, and rendering
+onto it doubled every marker. `render` now refuses an annotated source and
+`joven strip` recovers the original from it — see the CHANGELOG.
 
 **The question:** instead of a TUI, can the whole workflow — choose a book, detect,
 review, render, verify — live in one page launched by one command?
@@ -211,7 +221,10 @@ uploaded files and start jobs. Never serve the working directory as static files
 
 ---
 
-## PR 4 — Sharing annotations: a portable pack
+## PR 4 — Sharing annotations: a portable pack *(deferred)*
+
+Set aside for now on the strength of the copyright note below; the design stays
+here so it can be picked up with the reasoning intact.
 
 **The idea:** publish the finished `annotations.json` for the Border Trilogy so
 another reader with the same edition can render footnotes without a model, a GPU,

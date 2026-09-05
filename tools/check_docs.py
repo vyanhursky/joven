@@ -31,6 +31,7 @@ DOCS = [
     "docs/troubleshooting.md",
     "docs/anatomy-of-a-call.md",
     "docs/configuration.md",
+    "docs/browser-ui.md",
 ]
 INVOCATION = re.compile(r"\bjoven ([a-z][a-z-]*)((?: [^\n#]*)?)")
 FLAG = re.compile(r"--[a-z][a-z0-9-]+")

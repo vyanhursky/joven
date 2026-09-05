@@ -71,7 +71,8 @@ McCarthy's novel *The Crossing* more readable on a Kobo. It also works cleanly f
 other McCarthy westerns, and may work for other multilingual literature.
 
 Everything runs on your machine against a local model: no API key, no per-book
-cost, nothing uploaded.
+cost, nothing uploaded. Use it from the command line, or from a local web page
+that runs the whole workflow — `joven ui`.
 
 ---
 
@@ -253,6 +254,7 @@ the three gates in detail: [docs/anatomy-of-a-call.md](docs/anatomy-of-a-call.md
 | [`render/`](src/joven/render) | Marker insertion, the EPUB 2→3 package upgrade, one-note-per-file footnote documents |
 | [`kepub.py`](src/joven/kepub.py) | The `kepubify` hand-off that produces the file the Kobo wants |
 | [`review.py`](src/joven/review.py), [`suspicion.py`](src/joven/suspicion.py) | The localhost review UI, and the heuristic that sorts likely-wrong translations to the top of it |
+| [`ui/`](src/joven/ui) | `joven ui` — books, a one-at-a-time job runner, the JSON routes, and the page |
 | [`verify.py`](src/joven/verify.py) | The 12-check integrity gate, including the text-preservation invariant |
 | [`trace.py`](src/joven/trace.py) | One JSONL record per segment, annotated or not, so any missing footnote can be explained afterwards |
 
@@ -364,6 +366,17 @@ joven inspect book.epub
 To work on the code rather than use it, see [Development](#development).
 
 ## Use
+
+Two ways in. **The browser**: one command, one page, every step:
+
+```bash
+joven ui
+```
+
+Drop the EPUB on the page, press *Start detect*, review the footnotes it proposes,
+press *Render & verify*, download the KEPUB. Screenshots and what each tab does are
+in [docs/browser-ui.md](docs/browser-ui.md). **The command line** does the same
+work as separate steps, and the two share the same files, so you can mix them.
 
 One book, five commands, in order:
 
@@ -532,6 +545,7 @@ python tools/bench_pipeline.py           # the two-tier system that actually shi
 | [DESIGN.md](DESIGN.md) | Why the architecture is shaped this way — the measurements behind every decision, what the device tests overturned, and the work deliberately left undone |
 | [docs/model-selection.md](docs/model-selection.md) | The local-model benchmark: why `qwen3:8b` |
 | [docs/anatomy-of-a-call.md](docs/anatomy-of-a-call.md) | What the local model is asked, what it may answer, and the gates that check it |
+| [docs/browser-ui.md](docs/browser-ui.md) | `joven ui`: the whole workflow in one local page, with screenshots |
 | [docs/configuration.md](docs/configuration.md) | `joven.toml` and `JOVEN_*`, the OpenAI-compatible backend, `--workers`, and the sidecar commands |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Tracing a missing footnote, improving translation quality, debug flags, and Kobo quirks |
 | [docs/releasing.md](docs/releasing.md) | Cutting a release: the one-time PyPI trusted-publisher setup, and what CI does with a tag |

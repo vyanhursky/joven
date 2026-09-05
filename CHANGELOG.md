@@ -10,6 +10,35 @@ suite.
 
 ### Added
 
+- **`joven ui` — the whole workflow in the browser.** Drop an EPUB on the page,
+  detect with live progress and a Cancel that keeps every answer already given,
+  review with the same keyboard as before plus **span editing** (select the Spanish
+  with the mouse; the marker moves), render and verify with one button, download
+  the KEPUB, and browse the decision trace with outcome filters and search. Books
+  are copied into `~/.joven/books/<sha256>/` with their sidecar, trace and outputs
+  alongside, so the files stay ordinary and the command line can pick up where the
+  page left off. Same `http.server` as the review page, one HTML file, no
+  framework; bound to loopback, with a per-session token on every write. See
+  [docs/browser-ui.md](docs/browser-ui.md).
+- **Span editing in the review API.** `POST /api/annotation/<id>` accepts `spans`,
+  checked the way the renderer checks them. Until now a model that marked the wrong
+  substring could only be rejected or fixed through `joven add`.
+- **`joven strip`, and `render` refuses a Joven output.** Found by pointing the
+  browser UI at a Calibre library: the only *The Crossing* on disk was an earlier
+  Joven output, and rendering a new sidecar onto it put a second marker after
+  every footnote, broke the text-preservation invariant and failed epubcheck —
+  while looking, paragraph by paragraph, entirely plausible. `render` now counts
+  the markers first and refuses with the way out; `inspect` shows the count;
+  `detect` warns and carries on, since detection ignores inserted nodes. `strip`
+  removes every marker, note document and the appended CSS and leaves the prose
+  byte-for-byte as the original had it, so the library copy can be the source
+  again. It does not undo an EPUB 2 → 3 package upgrade; the result is a clean
+  EPUB 3. Measured on that library copy: 728 markers and 728 note documents
+  removed, and the baseline sidecar then renders onto the stripped book with all
+  12 checks passing.
+- **`detect()` can be stopped.** A `should_stop` callback is polled between
+  paragraphs; a stopped run returns what it has, and the trace already holds every
+  model answer, so it resumes like an interrupted one.
 - **A progress bar.** `detect` showed nothing for the length of a run — 12 minutes
   on a GPU, 73 on a laptop. It now reports paragraphs done, escalations, footnotes
   so far, the last model latency and the time left, on stderr, and gets out of the
