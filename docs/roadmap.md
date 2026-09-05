@@ -34,11 +34,15 @@ review page. Today a wrong span can only be rejected or fixed through `joven add
 
 ---
 
-## PR 2 — Finish the run
+## PR 2 — Finish the run *(done)*
 
 Three things that make a 73-minute silent run into a short visible one against
 whichever local server is already running, plus the configuration and command
-surface they need.
+surface they need. Shipped as described below; the measured run is in the
+CHANGELOG. One finding worth carrying forward: with Ollama at its defaults,
+`--workers 4` gained only 12% because the server queued the requests — the
+guarantee that mattered (identical trace order) held, and `OLLAMA_NUM_PARALLEL` is
+the user's side of the bargain.
 
 ### 2a. Progress
 

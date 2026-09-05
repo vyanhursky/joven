@@ -9,7 +9,6 @@ duplicated, or reordered the author's text.
 
 from __future__ import annotations
 
-import os
 import posixpath
 import zipfile
 from dataclasses import dataclass
@@ -18,6 +17,7 @@ from pathlib import Path
 from lxml import etree
 
 from . import external
+from .config import load as load_config
 from .epub.archive import MIMETYPE_NAME, EpubArchive
 from .epub.document import JOVEN_ATTR, XHTML_NS, document_text, parse, text_of
 
@@ -333,7 +333,9 @@ def epubcheck_command() -> list[str] | None:
     launcher = external.resolve("epubcheck")
     if launcher:
         return [launcher]
-    if jar := os.environ.get(JAR_ENV):
+    # The environment variable is one of the routes the config module reads, so a
+    # joven.toml `epubcheck_jar = ...` arrives here the same way.
+    if jar := load_config().settings.epubcheck_jar:
         return external.java_command(Path(jar))
     return None
 

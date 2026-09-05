@@ -4,10 +4,11 @@ Tier 2 answers three questions at once, which is why it is an instruct LLM and n
 a translation engine: *is this actually Spanish*, *which part of it is Spanish*,
 and *what does it mean*. A pure NMT backend can only answer the third.
 
-The backend is a local model via Ollama — free, offline, and no API key. The
-:class:`Translator` protocol is the seam: anything answering :meth:`adjudicate`
-and :meth:`translate` can stand in, which is what :class:`StubTranslator` does
-for the tests.
+The backend is a local model — free, offline, and no API key — reached either
+through Ollama or through any server that speaks the OpenAI chat protocol
+(llama.cpp's server, LM Studio, vLLM). The :class:`Translator` protocol is the
+seam: anything answering :meth:`adjudicate` and :meth:`translate` can stand in,
+which is what :class:`StubTranslator` does for the tests.
 """
 
 from __future__ import annotations
@@ -21,10 +22,10 @@ from typing import Protocol
 
 import httpx
 
+from .config import DEFAULT_MODEL, DEFAULT_OLLAMA_URL, DEFAULT_OPENAI_URL
 from .dialogue import strip_dialogue_tags
 
-DEFAULT_OLLAMA_URL = "http://localhost:11434"
-DEFAULT_MODEL = "qwen3:8b"
+__all__ = ["DEFAULT_MODEL", "DEFAULT_OLLAMA_URL", "DEFAULT_OPENAI_URL"]
 
 # JSON schema handed to the model so the response shape is guaranteed.
 SCHEMA = {
@@ -36,6 +37,9 @@ SCHEMA = {
     },
     "required": ["is_spanish", "spanish_text", "translation"],
 }
+# The OpenAI-style `strict` schema mode refuses a schema that leaves extra
+# properties open, so the same contract is stated closed for that protocol.
+STRICT_SCHEMA = {**SCHEMA, "additionalProperties": False}
 
 SYSTEM_PROMPT = """\
 You analyse single paragraphs from an English-language novel set on the \
@@ -265,6 +269,49 @@ TRANSLATE_FEWSHOT: list[tuple[str, dict]] = [
 ]
 
 
+def build_messages(
+    text: str,
+    context: str,
+    system: str = SYSTEM_PROMPT,
+    fewshot: list[tuple[str, dict]] | None = None,
+) -> list[dict]:
+    """The chat turns for one call: system, the few-shot pairs, then the paragraph.
+
+    Shared by every backend so the prompt, the examples and the context fence
+    cannot drift between them.
+    """
+    messages: list[dict] = [{"role": "system", "content": system}]
+    for shot_text, shot_answer in (fewshot if fewshot is not None else FEWSHOT):
+        messages.append({"role": "user", "content": shot_text})
+        messages.append(
+            {"role": "assistant", "content": json.dumps(shot_answer, ensure_ascii=False)}
+        )
+    messages.append({"role": "user", "content": _user_turn(text, context)})
+    return messages
+
+
+def _parse_reply(raw: str, model: str, latency: float) -> Verdict:
+    """A verdict from the reply text, or an error verdict when it is not the JSON asked for."""
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return Verdict(
+            is_spanish=False,
+            model=model,
+            latency_s=latency,
+            raw=raw,
+            error=f"unparseable JSON: {exc}",
+        )
+    return Verdict(
+        is_spanish=bool(parsed.get("is_spanish")),
+        spanish_text=(parsed.get("spanish_text") or "").strip(),
+        translation=(parsed.get("translation") or "").strip(),
+        model=model,
+        latency_s=latency,
+        raw=raw,
+    )
+
+
 class Translator(Protocol):
     """Tier 2 backend.
 
@@ -338,14 +385,7 @@ class OllamaTranslator:
         system: str = SYSTEM_PROMPT,
         fewshot: list[tuple[str, dict]] | None = None,
     ) -> list[dict]:
-        messages: list[dict] = [{"role": "system", "content": system}]
-        for shot_text, shot_answer in (fewshot if fewshot is not None else FEWSHOT):
-            messages.append({"role": "user", "content": shot_text})
-            messages.append(
-                {"role": "assistant", "content": json.dumps(shot_answer, ensure_ascii=False)}
-            )
-        messages.append({"role": "user", "content": _user_turn(text, context)})
-        return messages
+        return build_messages(text, context, system, fewshot)
 
     def client(self) -> httpx.Client:
         if self._client is None:
@@ -392,25 +432,120 @@ class OllamaTranslator:
 
         latency = time.perf_counter() - started
         raw = response.json().get("message", {}).get("content", "")
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            return Verdict(
-                is_spanish=False,
-                model=self.model,
-                latency_s=latency,
-                raw=raw,
-                error=f"unparseable JSON: {exc}",
-            )
+        return _parse_reply(raw, self.model, latency)
 
-        return Verdict(
-            is_spanish=bool(parsed.get("is_spanish")),
-            spanish_text=(parsed.get("spanish_text") or "").strip(),
-            translation=(parsed.get("translation") or "").strip(),
-            model=self.model,
-            latency_s=latency,
-            raw=raw,
-        )
+
+_THINK_BLOCK = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+
+@dataclass(slots=True)
+class OpenAITranslator:
+    """Any local server speaking the OpenAI chat protocol: llama.cpp, LM Studio, vLLM.
+
+    Same prompt, same few-shots, same JSON contract as the Ollama backend; only the
+    wire format differs. Two request features are optional on this protocol and
+    learned per session rather than assumed:
+
+    * ``response_format`` as a strict ``json_schema``, which llama.cpp, LM Studio
+      and vLLM honour. A server that answers 400 to it gets ``json_object`` plus
+      the schema already in the prompt.
+    * ``chat_template_kwargs: {"enable_thinking": false}``, which is how llama.cpp
+      and vLLM switch a Qwen3-style reasoning model off. A server that rejects the
+      unknown field gets the request without it, and any ``<think>`` block that
+      then arrives in the reply is stripped before parsing.
+
+    Each is dropped after the first refusal and stays dropped, so a book costs at
+    most two extra requests to find out what its server supports.
+    """
+
+    model: str
+    base_url: str = DEFAULT_OPENAI_URL
+    api_key: str = ""
+    timeout: float = 240.0
+    name: str = "openai"
+    _client: httpx.Client | None = None
+    _schema_ok: bool | None = None
+    _thinking_switch_ok: bool | None = None
+
+    def __post_init__(self) -> None:
+        self.name = f"openai:{self.model}"
+        self.base_url = self.base_url.rstrip("/")
+
+    def client(self) -> httpx.Client:
+        if self._client is None:
+            headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+            self._client = httpx.Client(timeout=self.timeout, headers=headers)
+        return self._client
+
+    def close(self) -> None:
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def adjudicate(self, text: str, context: str = "") -> Verdict:
+        return self._call(text, context, SYSTEM_PROMPT, FEWSHOT)
+
+    def translate(self, text: str, context: str = "") -> Verdict:
+        return self._call(text, context, TRANSLATE_ONLY_PROMPT, TRANSLATE_FEWSHOT)
+
+    def _body(self, messages: list[dict]) -> dict:
+        body: dict = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0,
+            "max_tokens": 400,
+            "stream": False,
+        }
+        if self._schema_ok is not False:
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "joven_verdict", "schema": STRICT_SCHEMA, "strict": True},
+            }
+        else:
+            body["response_format"] = {"type": "json_object"}
+        if self._thinking_switch_ok is not False:
+            body["chat_template_kwargs"] = {"enable_thinking": False}
+        return body
+
+    def _degrade(self) -> bool:
+        """Drop one optional request feature after a 400. False when none is left."""
+        if self._thinking_switch_ok is None:
+            self._thinking_switch_ok = False
+            return True
+        if self._schema_ok is None:
+            self._schema_ok = False
+            return True
+        return False
+
+    def _call(
+        self, text: str, context: str, system: str, fewshot: list[tuple[str, dict]]
+    ) -> Verdict:
+        started = time.perf_counter()
+        messages = build_messages(text, context, system, fewshot)
+        while True:
+            try:
+                response = self.client().post(
+                    f"{self.base_url}/chat/completions", json=self._body(messages)
+                )
+                if response.status_code == 400 and self._degrade():
+                    continue
+                response.raise_for_status()
+                payload = response.json()
+                raw = payload["choices"][0]["message"]["content"] or ""
+            except Exception as exc:  # noqa: BLE001 - surface, never crash the run
+                return Verdict(
+                    is_spanish=False,
+                    model=self.model,
+                    latency_s=time.perf_counter() - started,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            break
+        # Everything the two learned switches could not prevent: a reasoning model
+        # thinking aloud before the JSON, or a code fence around it.
+        raw = _THINK_BLOCK.sub("", raw).strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`").removeprefix("json").strip()
+        return _parse_reply(raw, self.model, time.perf_counter() - started)
 
 
 
@@ -430,11 +565,48 @@ def installed_models(base_url: str = DEFAULT_OLLAMA_URL) -> list[str]:
     return [m["name"] for m in response.json().get("models", [])]
 
 
+def openai_available(base_url: str, api_key: str = "") -> bool:
+    """True when something answers ``GET /models`` at ``base_url``."""
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    try:
+        response = httpx.get(f"{base_url.rstrip('/')}/models", timeout=3.0, headers=headers)
+        return response.status_code == 200
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def openai_models(base_url: str, api_key: str = "") -> list[str]:
+    """Model ids the server lists. Empty when it lists none, or does not support it."""
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    try:
+        response = httpx.get(f"{base_url.rstrip('/')}/models", timeout=5.0, headers=headers)
+        response.raise_for_status()
+        return [m["id"] for m in response.json().get("data", []) if m.get("id")]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+BACKENDS = ("ollama", "openai", "stub")
+
+
 def get_translator(
-    backend: str, model: str = DEFAULT_MODEL, base_url: str = DEFAULT_OLLAMA_URL
+    backend: str,
+    model: str = DEFAULT_MODEL,
+    base_url: str | None = None,
+    api_key: str = "",
 ) -> Translator:
+    """A Tier-2 backend by name.
+
+    ``base_url`` means the Ollama server for ``ollama`` and the ``/v1`` root of an
+    OpenAI-compatible server for ``openai``; each defaults to its own conventional
+    address when not given.
+    """
     if backend == "stub":
         return StubTranslator()
     if backend == "ollama":
-        return OllamaTranslator(model=model, base_url=base_url)
-    raise ValueError(f"unknown backend {backend!r} — choose from: ollama, stub")
+        return OllamaTranslator(model=model, base_url=base_url or DEFAULT_OLLAMA_URL)
+    if backend == "openai":
+        return OpenAITranslator(
+            model=model, base_url=base_url or DEFAULT_OPENAI_URL, api_key=api_key
+        )
+    raise ValueError(f"unknown backend {backend!r} — choose from: {', '.join(BACKENDS)}")

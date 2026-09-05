@@ -127,7 +127,7 @@ reads exactly as the author set it down.
 
 ## How it works
 
-Five commands, two of which do the real work. Detection is **two-tier**: a cheap
+A handful of commands, two of which do the real work. Detection is **two-tier**: a cheap
 statistical pass judges every sentence, and only the fraction it cannot call is put
 to the local LLM.
 
@@ -246,7 +246,8 @@ the three gates in detail: [docs/anatomy-of-a-call.md](docs/anatomy-of-a-call.md
 |---|---|
 | [`epub/`](src/joven/epub) | Byte-level zip surgery — copy every archive entry verbatim, reserialize only the XHTML that actually changed |
 | [`detect/`](src/joven/detect) | `segment.py` splits paragraphs into sentences; `triage.py` is Tier 1 (`lingua` + tag-stripping); `pipeline.py` runs both tiers and merges contiguous Spanish into one footnote per paragraph |
-| [`translate.py`](src/joven/translate.py) | Tier 2 — the Ollama client, the `Translator` protocol, and the similarity veto that suppresses no-op "translations" |
+| [`translate.py`](src/joven/translate.py) | Tier 2 — the Ollama and OpenAI-compatible clients, the `Translator` protocol, and the similarity veto that suppresses no-op "translations" |
+| [`config.py`](src/joven/config.py) | `joven.toml`, `JOVEN_*`, and which one wins |
 | [`dialogue.py`](src/joven/dialogue.py) | McCarthy's `, he said.` vocabulary, shared by every gate that must not measure it |
 | [`model.py`](src/joven/model.py) | The `annotations.json` sidecar — content-hash IDs, statuses, merge semantics |
 | [`render/`](src/joven/render) | Marker insertion, the EPUB 2→3 package upgrade, one-note-per-file footnote documents |
@@ -377,10 +378,21 @@ joven verify  out/book.annotated.epub --original book.epub
 **`inspect`** reports what you are holding — EPUB version, DRM, spine, word counts.
 Run it first; it fails fast on a file the rest of the pipeline cannot use.
 
-**`detect`** is the slow step: about 73 minutes for a 150,000-word novel, single
-threaded, $0. It writes `annotations.json` (the sidecar you will edit) and, with
-`--trace`, a JSONL record of every segment it looked at. Re-running it is safe —
-your review decisions are sticky.
+**`detect`** is the slow step: about 73 minutes for a 150,000-word novel on an
+M-series laptop, 12 on a desktop GPU, $0. A progress bar shows paragraphs done,
+escalations and footnotes so far. It writes `annotations.json` (the sidecar you
+will edit) and, with `--trace`, a JSONL record of every segment it looked at.
+Re-running it is safe — your review decisions are sticky.
+
+```bash
+joven detect book.epub --workers 4                                          # with OLLAMA_NUM_PARALLEL=4
+joven detect book.epub --backend openai --base-url http://localhost:8081/v1 --model qwen3.8-27b
+```
+
+`--workers` scans several paragraphs at once; `--backend openai` talks to any
+server speaking the OpenAI chat protocol — llama.cpp, LM Studio, vLLM — still on
+your machine. Model, server, workers and the rest can live in a `joven.toml`
+instead of on every command line; see [docs/configuration.md](docs/configuration.md).
 
 The trace is also the run's recovery log: it is flushed a record at a time, so an
 interrupted run loses nothing that the model already answered.
@@ -419,7 +431,13 @@ joven add annotations.json --epub book.epub \
   --find "Bueno pues" --translation "Well then"
 ```
 
-Added entries are marked `edited`, so re-detection will never overwrite them.
+Added entries are marked `edited`, so re-detection will never overwrite them. The
+other direction, and the state of play, without opening the review page:
+
+```bash
+joven reject annotations.json --find "No suh"      # not Spanish; never render it
+joven status annotations.json --epub book.epub     # counts, flags, does it match this book
+```
 
 For tuning, tracing, and the debug flags, see
 [docs/troubleshooting.md](docs/troubleshooting.md).
@@ -514,6 +532,7 @@ python tools/bench_pipeline.py           # the two-tier system that actually shi
 | [DESIGN.md](DESIGN.md) | Why the architecture is shaped this way — the measurements behind every decision, what the device tests overturned, and the work deliberately left undone |
 | [docs/model-selection.md](docs/model-selection.md) | The local-model benchmark: why `qwen3:8b` |
 | [docs/anatomy-of-a-call.md](docs/anatomy-of-a-call.md) | What the local model is asked, what it may answer, and the gates that check it |
+| [docs/configuration.md](docs/configuration.md) | `joven.toml` and `JOVEN_*`, the OpenAI-compatible backend, `--workers`, and the sidecar commands |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Tracing a missing footnote, improving translation quality, debug flags, and Kobo quirks |
 | [docs/releasing.md](docs/releasing.md) | Cutting a release: the one-time PyPI trusted-publisher setup, and what CI does with a tag |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes and known limitations |

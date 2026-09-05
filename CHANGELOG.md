@@ -2,8 +2,73 @@
 
 ## Unreleased
 
-Small gaps found by reading the code cold after the Windows port, none of them
-visible from a green suite.
+The run is now something you can watch, speed up, point at whichever local model
+server you already have, and configure once instead of on every command line —
+plus the sidecar commands the CLI was missing. Before that, the small gaps found by
+reading the code cold after the Windows port, none of them visible from a green
+suite.
+
+### Added
+
+- **A progress bar.** `detect` showed nothing for the length of a run — 12 minutes
+  on a GPU, 73 on a laptop. It now reports paragraphs done, escalations, footnotes
+  so far, the last model latency and the time left, on stderr, and gets out of the
+  way when the run ends or when stderr is not a terminal. `--quiet` turns it off.
+- **`detect --workers N`.** Several paragraphs in flight at once. The pipeline is
+  restructured so one paragraph is the unit of work and paragraphs are *finished*
+  strictly in book order however the model schedules them, so `trace.jsonl`,
+  `--resume` and the sidecar are identical at any worker count — pinned by a test
+  that runs the same book on one worker and four with a deliberately jittery
+  backend. Ollama needs `OLLAMA_NUM_PARALLEL` to match or the workers queue.
+- **`detect --backend openai`**, for any server speaking the OpenAI chat protocol:
+  llama.cpp's server, LM Studio, vLLM, a router in front of them. Same prompt, same
+  few-shot examples, same JSON contract; only the wire format differs, and the run
+  stays offline. Two request features vary between servers — a strict
+  `json_schema` response format and the `enable_thinking` switch for Qwen3-style
+  models — and the backend learns which yours accepts from its first 400 rather
+  than assuming, then strips any `<think>` block that arrives anyway.
+- **Configuration.** `joven.toml` in the working directory, a user-level
+  `config.toml`, and `JOVEN_*` variables, with one precedence order: flag, then
+  environment, then project file, then user file, then default. `joven config`
+  prints every value with its source. An unknown key or a wrong type is an error,
+  because a silently ignored `worker = 4` is a run four times slower than intended
+  with nothing to say why. `JOVEN_EPUBCHECK_JAR` is unchanged; it is now simply the
+  environment spelling of the `epubcheck_jar` setting.
+- **`joven reject`, `joven reset`, `joven status`, `joven diff`.** The review
+  page's decisions from the shell, where a sidecar stands, and what a
+  re-detection changed, by annotation id.
+- **`detect --href` and `--range START:STOP`**, alongside `--limit`, for iterating
+  against a real model on one chapter.
+- **`joven detect --ollama-url`**, also read from `JOVEN_OLLAMA_URL`. The server
+  address was a constant, so an Ollama on another host or port was unreachable.
+- **`j` / `k`** move between review cards, and **Ctrl-Enter** saves an edit from
+  inside the text box.
+
+### Measured
+
+A Vintage edition of *The Crossing* (160,262 words, 5,637 paragraphs, 13,878
+segments) on the RTX 4070 Ti SUPER with `qwen3:8b`, Ollama at its defaults:
+
+| | one worker | `--workers 4` |
+|---|---|---|
+| escalated to the LLM | 3,046 (22%) | 3,046 |
+| footnotes | 735 | 734 |
+| trace order | — | identical, segment for segment |
+| model time per call | 0.3 s | 0.8 s |
+| wall clock | 15.2 min | 13.4 min |
+
+The trace is the same shape at both settings, and the footnotes differ by one
+(four of 13,878 outcomes moved, which is Ollama's batching, not the pipeline).
+The speed-up is small **because this Ollama was not told to run requests in
+parallel**: the per-call latency nearly tripled, which is four requests waiting in
+one queue. `OLLAMA_NUM_PARALLEL=4` in Ollama's environment is what the flag needs,
+and the docs now say so; the ordering guarantee is what this run proves.
+
+The same 200-paragraph slice through `--backend openai` against a llama.cpp router
+serving a 27B Qwen3 model: 118 calls, zero errors, valid JSON on every reply, and
+the same Spanish/not-Spanish verdict as `qwen3:8b` on 112 of them. The six that
+differ are the hard cases both models are entitled to disagree on — `Vaquero.`,
+`Nuevo Mexico.`, `Momentito, she said.` — at 5.5 s a call for the larger model.
 
 ### Fixed
 
@@ -18,13 +83,6 @@ visible from a green suite.
   inside rendering. The plain fact is now stated first, as a warning: the same
   edition re-saved by Calibre hashes differently and renders fine, and the
   per-paragraph check remains the hard gate.
-
-### Added
-
-- **`joven detect --ollama-url`**, also read from `JOVEN_OLLAMA_URL`. The server
-  address was a constant, so an Ollama on another host or port was unreachable.
-- **`j` / `k`** move between review cards, and **Ctrl-Enter** saves an edit from
-  inside the text box.
 
 ### Infrastructure
 
