@@ -6,8 +6,14 @@ from pathlib import Path
 from typing import NoReturn
 
 import typer
+from rich.console import Console
+from rich.progress import BarColumn, MofNCompleteColumn, TextColumn, TimeRemainingColumn
+from rich.progress import Progress as RichProgress
 
+from .config import ConfigError, Resolved
+from .config import load as load_config
 from .console import force_utf8_output
+from .detect.pipeline import Progress
 from .detect.pipeline import detect as run_detect
 from .detect.triage import Triager
 from .epub.archive import EpubArchive, EpubError
@@ -17,8 +23,16 @@ from .kepub import INSTALL_HINT, KepubError
 from .model import Annotation, Sidecar, Status, normalize, occurrence_indices
 from .render import RenderError, render_epub
 from .review import serve as serve_review
+from .suspicion import suspicions
 from .trace import Outcome, Tracer, load_trace, reusable_answers
-from .translate import DEFAULT_OLLAMA_URL, get_translator, installed_models, ollama_available
+from .translate import (
+    BACKENDS,
+    get_translator,
+    installed_models,
+    ollama_available,
+    openai_available,
+    openai_models,
+)
 from .verify import verify as run_verify
 
 app = typer.Typer(
@@ -46,6 +60,23 @@ def _fail(exc: Exception) -> NoReturn:
     raise typer.Exit(2) from exc
 
 
+def _error(message: str, code: int = 1) -> NoReturn:
+    typer.secho(f"error: {message}", fg=typer.colors.RED, err=True)
+    raise typer.Exit(code)
+
+
+def _warn(message: str) -> None:
+    typer.secho(f"warning: {message}", fg=typer.colors.YELLOW, err=True)
+
+
+def _settings() -> Resolved:
+    """The effective configuration, or a clear error about the file that broke it."""
+    try:
+        return load_config()
+    except ConfigError as exc:
+        _fail(exc)
+
+
 def _warn_if_different_file(sidecar: Sidecar, sidecar_path: Path, epub: Path) -> None:
     """Say plainly when a sidecar was detected from some other file.
 
@@ -55,13 +86,50 @@ def _warn_if_different_file(sidecar: Sidecar, sidecar_path: Path, epub: Path) ->
     error make sense when it arrives.
     """
     if sidecar.source_matches(epub) is False:
-        typer.secho(
-            f"warning: {sidecar_path.name} was detected from a different file than "
+        _warn(
+            f"{sidecar_path.name} was detected from a different file than "
             f"{epub.name} (sha256 differs). The same edition re-saved is fine; a "
-            "different edition will fail with 'source text drifted'.",
-            fg=typer.colors.YELLOW,
-            err=True,
+            "different edition will fail with 'source text drifted'."
         )
+
+
+def _locate(sidecar: Sidecar, find: str | None, ident: str | None) -> Annotation:
+    """Exactly one annotation, by a substring of its paragraph or by id."""
+    if bool(find) == bool(ident):
+        _error("give exactly one of --find or --id")
+    if ident:
+        for annotation in sidecar.annotations:
+            if annotation.id == ident:
+                return annotation
+        _error(f"no annotation with id {ident!r}")
+    needle = normalize(find or "")
+    matches = [a for a in sidecar.annotations if needle in normalize(a.source_text)]
+    if not matches:
+        _error(f"no annotation's paragraph contains {find!r}")
+    if len(matches) > 1:
+        typer.secho(f"{len(matches)} annotations match — be more specific:", fg=typer.colors.YELLOW)
+        for a in matches[:8]:
+            typer.echo(f"  {a.id}  {a.href}#{a.para_index}  {a.source_text[:72]!r}")
+        raise typer.Exit(1)
+    return matches[0]
+
+
+def _parse_range(text: str) -> tuple[int | None, int | None]:
+    """``START:STOP`` with either side optional, as a Python slice reads it."""
+    start_text, sep, stop_text = text.partition(":")
+    if not sep:
+        _error(f"--range wants START:STOP, got {text!r}")
+    try:
+        start = int(start_text) if start_text else None
+        stop = int(stop_text) if stop_text else None
+    except ValueError:
+        _error(f"--range wants integers, got {text!r}")
+    if (start is not None and start < 0) or (stop is not None and stop < 0):
+        _error("--range does not take negative positions")
+    return start, stop
+
+
+# ----------------------------------------------------------------------- commands
 
 
 @app.command()
@@ -162,11 +230,7 @@ def render(
     if result.stylesheet:
         typer.echo(f"footnote CSS appended to {result.stylesheet}")
     if result.skipped:
-        typer.secho(
-            f"warning: sidecar references documents not in this book: {result.skipped}",
-            fg=typer.colors.YELLOW,
-            err=True,
-        )
+        _warn(f"sidecar references documents not in this book: {result.skipped}")
     if result.annotations_applied:
         typer.echo(
             f"applied {result.annotations_applied} annotation(s) "
@@ -183,11 +247,7 @@ def render(
             fg=typer.colors.GREEN,
         )
     elif kepub:
-        typer.secho(
-            f"warning: kepubify not on PATH — skipped KEPUB ({INSTALL_HINT})",
-            fg=typer.colors.YELLOW,
-            err=True,
-        )
+        _warn(f"kepubify not on PATH — skipped KEPUB ({INSTALL_HINT})")
 
 
 @app.command()
@@ -232,17 +292,31 @@ def detect(
     trace: Path | None = typer.Option(
         None, "--trace", help="Write a JSONL decision trace (one record per segment)"
     ),
-    backend: str = typer.Option(
-        "ollama", "--backend", help="ollama | stub | none (tier 1 only)"
+    backend: str | None = typer.Option(
+        None, "--backend", help="ollama | openai | stub | none (tier 1 only) [config: ollama]"
     ),
-    model: str = typer.Option("qwen3:8b", "--model", help="Ollama model tag"),
-    ollama_url: str = typer.Option(
-        DEFAULT_OLLAMA_URL,
-        "--ollama-url",
-        envvar="JOVEN_OLLAMA_URL",
-        help="Where Ollama is listening",
+    model: str | None = typer.Option(None, "--model", help="Model tag [config: qwen3:8b]"),
+    ollama_url: str | None = typer.Option(
+        None, "--ollama-url", help="Where Ollama is listening [config: http://localhost:11434]"
+    ),
+    base_url: str | None = typer.Option(
+        None,
+        "--base-url",
+        help="OpenAI-compatible server, ending in /v1 [config: http://localhost:8080/v1]",
+    ),
+    api_key: str | None = typer.Option(
+        None, "--api-key", help="Bearer token for a server that wants one (prefer JOVEN_API_KEY)"
+    ),
+    workers: int | None = typer.Option(
+        None, "--workers", min=1, help="Paragraphs in flight at once [config: 1]"
     ),
     limit: int | None = typer.Option(None, "--limit", help="Only scan the first N paragraphs"),
+    href: list[str] | None = typer.Option(
+        None, "--href", help="Only scan this spine document (repeatable)"
+    ),
+    paragraph_range: str | None = typer.Option(
+        None, "--range", help="Only scan paragraphs START:STOP (either side optional)"
+    ),
     merge: bool = typer.Option(
         True, "--merge/--overwrite", help="Merge into an existing sidecar, keeping human edits"
     ),
@@ -253,6 +327,7 @@ def detect(
         dir_okay=False,
         help="Reuse model answers from an earlier trace instead of re-asking",
     ),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="No progress bar"),
 ) -> None:
     """Detect foreign-language passages and write an annotations sidecar.
 
@@ -262,31 +337,54 @@ def detect(
     A run that was interrupted can be picked up with --resume pointed at its
     trace: every model answer already recorded is reused, and only the segments
     it never reached cost anything.
+
+    Every option marked [config: …] falls back to joven.toml or a JOVEN_* variable;
+    `joven config` shows the effective values.
     """
     _load(epub)
+    settings = _settings().settings
+    backend = backend or settings.backend
+    model = model or settings.model
+    ollama_url = ollama_url or settings.ollama_url
+    base_url = base_url or settings.base_url
+    api_key = api_key if api_key is not None else settings.api_key
+    workers = workers or settings.workers
 
     translator = None
     if backend not in {"none", ""}:
-        if backend == "ollama" and not ollama_available(ollama_url):
-            typer.secho(
-                f"error: ollama is not running at {ollama_url} — start it with: ollama serve\n"
-                "       (or point --ollama-url / JOVEN_OLLAMA_URL at a server that is)",
-                fg=typer.colors.RED,
-                err=True,
-            )
-            raise typer.Exit(2)
+        if backend not in BACKENDS:
+            _error(f"unknown backend {backend!r} — choose from: {', '.join(BACKENDS)}, none", 2)
         if backend == "ollama":
+            if not ollama_available(ollama_url):
+                _error(
+                    f"ollama is not running at {ollama_url} — start it with: ollama serve\n"
+                    "       (or point --ollama-url / JOVEN_OLLAMA_URL at a server that is)",
+                    2,
+                )
             available = installed_models(ollama_url)
             if model not in available:
-                typer.secho(
-                    f"error: model {model!r} not installed at {ollama_url}. "
+                _error(
+                    f"model {model!r} not installed at {ollama_url}. "
                     f"Available: {available or 'none'}\n"
                     f"       install with: ollama pull {model}",
-                    fg=typer.colors.RED,
-                    err=True,
+                    2,
                 )
-                raise typer.Exit(2)
-        translator = get_translator(backend, model, base_url=ollama_url)
+        elif backend == "openai":
+            if not openai_available(base_url, api_key):
+                _error(
+                    f"nothing answered GET {base_url}/models — is the server running, "
+                    "and does --base-url end in /v1?",
+                    2,
+                )
+            listed = openai_models(base_url, api_key)
+            if listed and model not in listed:
+                _warn(f"{base_url} does not list {model!r}; it lists {listed}")
+        translator = get_translator(
+            backend,
+            model,
+            base_url=ollama_url if backend == "ollama" else base_url,
+            api_key=api_key,
+        )
 
     if translator is None:
         typer.secho(
@@ -301,31 +399,70 @@ def detect(
     if resume is not None:
         recorded = reusable_answers(load_trace(resume))
         if not recorded:
-            typer.secho(
-                f"warning: {resume} holds no reusable model answers — "
-                "running as a fresh detection",
-                fg=typer.colors.YELLOW,
-                err=True,
-            )
+            _warn(f"{resume} holds no reusable model answers — running as a fresh detection")
         else:
             typer.echo(f"resuming: {len(recorded):,} model answers recalled from {resume}")
+            recorded_by = {d.tier2_model for d in recorded.values()} - {""}
+            if translator is not None and recorded_by and model not in recorded_by:
+                _warn(
+                    f"the trace was recorded by {sorted(recorded_by)} and this run uses "
+                    f"{model!r}; recorded answers are reused as they stand"
+                )
         if trace is None:
-            typer.secho(
-                "warning: --resume without --trace, so this run records nothing "
-                "and an interruption would lose it again",
-                fg=typer.colors.YELLOW,
-                err=True,
+            _warn(
+                "--resume without --trace, so this run records nothing "
+                "and an interruption would lose it again"
             )
 
-    with Tracer(path=trace) as tracer:
+    hrefs = set(href) if href else None
+    if hrefs:
+        spine = set(read_package(_load(epub)).spine_hrefs)
+        for missing in sorted(hrefs - spine):
+            _warn(f"--href {missing!r} is not in the spine")
+    span = _parse_range(paragraph_range) if paragraph_range else None
+
+    triager = Triager(
+        accept_spanish=settings.accept_spanish,
+        reject_english=settings.reject_english,
+        accept_spanish_stripped=settings.accept_spanish_stripped,
+    )
+
+    console = Console(stderr=True)
+    bar = RichProgress(
+        TextColumn("detect"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("{task.fields[status]}"),
+        TimeRemainingColumn(),
+        console=console,
+        disable=quiet or not console.is_terminal,
+        transient=True,
+    )
+    task = bar.add_task("detect", total=None, status="")
+
+    def on_progress(p: Progress) -> None:
+        status = f"{p.escalated:,} escalated · {p.annotated:,} footnotes"
+        if p.errors:
+            status += f" · {p.errors} errors"
+        if p.last_latency_s:
+            status += f" · {p.last_latency_s:.1f}s/call"
+        bar.update(task, total=p.paragraphs_total, completed=p.paragraphs_done, status=status)
+
+    with bar, Tracer(path=trace) as tracer:
         try:
             sidecar, result = run_detect(
                 epub,
-                triager=Triager(),
+                triager=triager,
                 translator=translator,
                 tracer=tracer,
                 limit=limit,
                 resume=recorded,
+                hrefs=hrefs,
+                paragraph_range=span,
+                workers=workers,
+                context_chars=settings.context_chars,
+                similarity_veto=settings.similarity_veto,
+                on_progress=on_progress,
             )
         except EpubError as exc:
             _fail(exc)
@@ -524,6 +661,163 @@ def add(
     typer.echo(f"  marked: {target[:70]!r}")
     typer.echo(f"  ->      {translation[:70]!r}")
     typer.echo(f"  sidecar now has {len(sidecar.annotations)} annotation(s)")
+
+
+@app.command()
+def reject(
+    annotations: Path = typer.Argument(..., exists=True, dir_okay=False, help="Sidecar to edit"),
+    find: str | None = typer.Option(None, "--find", help="Text of the annotated paragraph"),
+    ident: str | None = typer.Option(None, "--id", help="The annotation's id"),
+) -> None:
+    """Mark an annotation rejected — not Spanish, never render it — without the review page.
+
+    The counterpart of `add`. A rejected id is never re-added by re-detection,
+    however confident the detector is.
+    """
+    sidecar = Sidecar.load(annotations)
+    target = _locate(sidecar, find, ident)
+    before = target.status
+    target.status = Status.REJECTED
+    sidecar.save(annotations)
+    typer.secho(f"rejected {target.href}#{target.para_index}  ({before} -> rejected)", fg="green")
+    typer.echo(f"  {target.spanish_text[:70]!r}")
+
+
+@app.command()
+def reset(
+    annotations: Path = typer.Argument(..., exists=True, dir_okay=False, help="Sidecar to edit"),
+    find: str | None = typer.Option(None, "--find", help="Text of the annotated paragraph"),
+    ident: str | None = typer.Option(None, "--id", help="The annotation's id"),
+) -> None:
+    """Return an annotation to `auto`, undoing a review decision.
+
+    The next re-detection may then overwrite it. An edited translation keeps its
+    current wording until that happens — there is no earlier wording to go back to.
+    """
+    sidecar = Sidecar.load(annotations)
+    target = _locate(sidecar, find, ident)
+    before = target.status
+    if before is Status.AUTO:
+        typer.echo(f"{target.href}#{target.para_index} is already auto")
+        return
+    target.status = Status.AUTO
+    sidecar.save(annotations)
+    typer.secho(f"reset {target.href}#{target.para_index}  ({before} -> auto)", fg="green")
+    if before is Status.EDITED:
+        typer.echo("  the edited wording stays until the next detect overwrites it")
+
+
+@app.command()
+def status(
+    annotations: Path = typer.Argument(..., exists=True, dir_okay=False, help="Sidecar to read"),
+    epub: Path | None = typer.Option(
+        None, "--epub", exists=True, dir_okay=False, help="Check the sidecar is for this book"
+    ),
+) -> None:
+    """Where a sidecar stands: counts by status, what is flagged, which model, which book."""
+    sidecar = Sidecar.load(annotations)
+    counts = sidecar.counts()
+    flagged = sum(
+        1
+        for a in sidecar.annotations
+        if not a.status.is_human and suspicions(a.spanish_text, a.translation)
+    )
+    models = sorted({m.strip() for a in sidecar.annotations for m in a.model.split(",") if m})
+    reviewed = sum(v for k, v in counts.items() if k != "auto")
+
+    typer.secho(f"\n{annotations.name}", bold=True)
+    typer.echo(f"  title         {sidecar.title or '(none recorded)'}")
+    typer.echo(f"  annotations   {len(sidecar.annotations):,}")
+    for name, value in counts.items():
+        typer.echo(f"    {name:<11} {value:,}")
+    typer.echo(f"  reviewed      {reviewed:,} of {len(sidecar.annotations):,}")
+    typer.echo(f"  flagged       {flagged:,}  (auto annotations the review would show first)")
+    typer.echo(f"  renderable    {len(sidecar.renderable()):,}")
+    typer.echo(f"  models        {', '.join(models) or '(none)'}")
+    digest = sidecar.source_sha256
+    typer.echo(f"  source sha256 {digest[:12] + '…' if digest else '(none recorded)'}")
+    if epub is not None:
+        match = sidecar.source_matches(epub)
+        if match is True:
+            typer.secho(f"  book          {epub.name}: matches", fg=typer.colors.GREEN)
+        elif match is False:
+            typer.secho(f"  book          {epub.name}: DIFFERENT FILE", fg=typer.colors.YELLOW)
+        else:
+            typer.echo(f"  book          {epub.name}: no hash recorded to compare")
+    typer.echo()
+
+
+@app.command()
+def diff(
+    old: Path = typer.Argument(..., exists=True, dir_okay=False, help="Earlier sidecar"),
+    new: Path = typer.Argument(..., exists=True, dir_okay=False, help="Later sidecar"),
+    limit: int = typer.Option(20, "--limit", help="Examples to show per kind of change"),
+) -> None:
+    """What changed between two sidecars, by annotation id.
+
+    The question after re-detecting with a different model or threshold: which
+    footnotes appeared, which vanished, and which read differently.
+    """
+    before = {a.id: a for a in Sidecar.load(old).annotations}
+    after = {a.id: a for a in Sidecar.load(new).annotations}
+    added = [after[i] for i in after.keys() - before.keys()]
+    removed = [before[i] for i in before.keys() - after.keys()]
+    reworded = [
+        (before[i], after[i])
+        for i in before.keys() & after.keys()
+        if before[i].translation != after[i].translation
+    ]
+    restated = [
+        (before[i], after[i])
+        for i in before.keys() & after.keys()
+        if before[i].status != after[i].status
+    ]
+    key = lambda a: (a.href, a.para_index)  # noqa: E731 - three sorts, one rule
+
+    typer.echo(
+        f"\n{old.name} -> {new.name}: {len(added)} added, {len(removed)} removed, "
+        f"{len(reworded)} reworded, {len(restated)} changed status"
+    )
+    if added:
+        typer.secho(f"\n  added ({len(added)})", bold=True)
+        for a in sorted(added, key=key)[:limit]:
+            typer.echo(f"    + {a.href}#{a.para_index}  {a.spanish_text[:48]!r}")
+            typer.echo(f"        {a.translation[:70]!r}")
+    if removed:
+        typer.secho(f"\n  removed ({len(removed)})", bold=True)
+        for a in sorted(removed, key=key)[:limit]:
+            typer.echo(f"    - {a.href}#{a.para_index}  {a.spanish_text[:48]!r}")
+    if reworded:
+        typer.secho(f"\n  reworded ({len(reworded)})", bold=True)
+        for was, now in sorted(reworded, key=lambda p: key(p[1]))[:limit]:
+            typer.echo(f"    ~ {now.href}#{now.para_index}  {now.spanish_text[:48]!r}")
+            typer.echo(f"        was  {was.translation[:66]!r}")
+            typer.echo(f"        now  {now.translation[:66]!r}")
+    if restated:
+        typer.secho(f"\n  changed status ({len(restated)})", bold=True)
+        for was, now in sorted(restated, key=lambda p: key(p[1]))[:limit]:
+            typer.echo(
+                f"    ~ {now.href}#{now.para_index}  {was.status} -> {now.status}  "
+                f"{now.spanish_text[:40]!r}"
+            )
+    typer.echo()
+
+
+@app.command()
+def config() -> None:
+    """Show the effective configuration and where each value comes from."""
+    resolved = _settings()
+    typer.secho("\nfiles consulted", bold=True)
+    for path in resolved.files:
+        state = "read" if path.is_file() else "absent"
+        typer.echo(f"  {path}  ({state})")
+    typer.secho("\nsettings", bold=True)
+    for name, source in resolved.sources.items():
+        value = getattr(resolved.settings, name)
+        shown = "••••" if name == "api_key" and value else repr(value)
+        typer.echo(f"  {name:<24} {shown:<36} {source}")
+    typer.echo("\n  precedence: flag > JOVEN_<NAME> > ./joven.toml > user config > default")
+    typer.echo()
 
 
 def main() -> None:
