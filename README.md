@@ -468,8 +468,9 @@ python3.13 -m venv .venv
 ```
 
 ```bash
-./.venv/bin/pytest                       # 379 tests, synthetic fixtures only
+./.venv/bin/pytest                       # ~400 tests, synthetic fixtures only
 ./.venv/bin/ruff check src tests tools
+./.venv/bin/mypy                         # type-checks src/, config in pyproject
 
 # opt in to the real-book tests (the book is never committed)
 JOVEN_TEST_EPUB=/path/to/book.epub ./.venv/bin/pytest

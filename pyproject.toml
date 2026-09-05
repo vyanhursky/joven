@@ -29,7 +29,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.5"]
+dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10", "lxml-stubs>=0.5"]
 
 [project.urls]
 Homepage = "https://github.com/vyanhursky/joven"
@@ -70,3 +70,12 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.ruff.lint.per-file-ignores]
 # typer's entire API is function calls in argument defaults
 "src/joven/cli.py" = ["B008"]
+
+[tool.mypy]
+files = ["src"]
+python_version = "3.11"
+# Every finding on first run was an Optional that lxml's stubs know about and the
+# code assumed away. None was a runtime bug; all were the shape of one.
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true

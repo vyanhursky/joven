@@ -51,7 +51,18 @@ fails at the point of upload with a permissions error, not before.
    ```
 
 The tag triggers the full workflow. `publish` runs only after `test`, `guards` and
-`package` are green, so a release cannot go out on a red suite.
+`package` are green, so a release cannot go out on a red suite. Once PyPI has the
+files, `release` creates the matching GitHub release: the same wheel and sdist
+attached, the CHANGELOG section for that version as the notes, and `--prerelease`
+set for any version carrying `a`, `b` or `rc`.
+
+### The CHANGELOG guard
+
+Step 2 is checked, not trusted. `package` runs
+`tools/changelog_section.py <version>` on a tag and fails if there is no
+`## v<version>` heading to extract — before the upload, because afterwards the
+version number is spent whether or not the notes existed. The same script produces
+the release notes, so what CI checks for is exactly what it will publish.
 
 ### The version guard
 
