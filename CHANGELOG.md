@@ -44,6 +44,32 @@ suite.
 - **`j` / `k`** move between review cards, and **Ctrl-Enter** saves an edit from
   inside the text box.
 
+### Measured
+
+A Vintage edition of *The Crossing* (160,262 words, 5,637 paragraphs, 13,878
+segments) on the RTX 4070 Ti SUPER with `qwen3:8b`, Ollama at its defaults:
+
+| | one worker | `--workers 4` |
+|---|---|---|
+| escalated to the LLM | 3,046 (22%) | 3,046 |
+| footnotes | 735 | 734 |
+| trace order | — | identical, segment for segment |
+| model time per call | 0.3 s | 0.8 s |
+| wall clock | 15.2 min | 13.4 min |
+
+The trace is the same shape at both settings, and the footnotes differ by one
+(four of 13,878 outcomes moved, which is Ollama's batching, not the pipeline).
+The speed-up is small **because this Ollama was not told to run requests in
+parallel**: the per-call latency nearly tripled, which is four requests waiting in
+one queue. `OLLAMA_NUM_PARALLEL=4` in Ollama's environment is what the flag needs,
+and the docs now say so; the ordering guarantee is what this run proves.
+
+The same 200-paragraph slice through `--backend openai` against a llama.cpp router
+serving a 27B Qwen3 model: 118 calls, zero errors, valid JSON on every reply, and
+the same Spanish/not-Spanish verdict as `qwen3:8b` on 112 of them. The six that
+differ are the hard cases both models are entitled to disagree on — `Vaquero.`,
+`Nuevo Mexico.`, `Momentito, she said.` — at 5.5 s a call for the larger model.
+
 ### Fixed
 
 - **The review page keeps its place.** Every decision re-rendered the list, which
