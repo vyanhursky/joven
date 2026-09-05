@@ -186,6 +186,22 @@ through `kepubify`, it strips the injected `koboSpan` elements before annotating
 says so. You do not need to do anything, but it is worth knowing that the output is
 built from the de-kepubified text.
 
+**Already-annotated sources.** If the only copy of a book you have left is a Joven
+output — it went into the library, the original did not — `render` refuses it:
+rendering a sidecar onto it would put a second marker after every footnote, and the
+result looks plausible at the paragraph level while failing the text-preservation
+invariant and epubcheck. `inspect` shows the marker count, `detect` warns and carries
+on (detection ignores the markers), and `strip` gives the original back:
+
+```bash
+joven strip book.annotated.epub -o out/        # -> out/book.stripped.epub
+```
+
+Every marker, note document and the appended CSS block are removed and the prose is
+exactly what the original had. The one thing it cannot undo is the EPUB 2 → 3
+package upgrade; a stripped book is a clean EPUB 3, and it renders again exactly as
+the original would have.
+
 ---
 
 ## Regionalisms without a clean translation

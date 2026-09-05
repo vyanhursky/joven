@@ -77,20 +77,50 @@ class ReviewState:
         """Why this annotation deserves a closer look; empty if nothing detected."""
         return suspicions(annotation.spanish_text, annotation.translation)
 
-    def update(self, annotation_id: str, status: str, translation: str | None) -> Annotation:
+    def update(
+        self,
+        annotation_id: str,
+        status: str,
+        translation: str | None,
+        spans: list[list[int]] | None = None,
+    ) -> Annotation:
+        """Apply one decision and write the sidecar.
+
+        ``spans`` replaces the Spanish runs -- the fix for a model that marked the
+        wrong substring, which used to be reachable only through ``joven add``.
+        Offsets are into ``source_text`` and are checked the way the renderer
+        checks them, so a bad selection is refused here rather than at render.
+        """
         with self.lock:
             found = next(
                 (a for a in self.sidecar.annotations if a.id == annotation_id), None
             )
             if found is None:
                 raise KeyError(annotation_id)
+            if spans is not None:
+                found.spans = _checked_spans(spans, len(found.source_text))
+                found.marker_offset = found.spans[-1][1]
+                found.status = Status.EDITED
             if translation is not None and translation.strip() != found.translation:
                 found.translation = translation.strip()
                 found.status = Status.EDITED
-            else:
+            elif spans is None:
                 found.status = Status(status)
             self.sidecar.save(self.path)
             return found
+
+
+def _checked_spans(spans: list[list[int]], limit: int) -> list[tuple[int, int]]:
+    cleaned = sorted((int(s), int(e)) for s, e in spans)
+    if not cleaned:
+        raise ValueError("an annotation needs at least one span")
+    for start, end in cleaned:
+        if not 0 <= start < end <= limit:
+            raise ValueError(f"span ({start}, {end}) outside 0..{limit}")
+    for (_, end), (start, _) in zip(cleaned, cleaned[1:], strict=False):
+        if end > start:
+            raise ValueError("spans overlap")
+    return cleaned
 
 
 def build_context(epub: Path | None, sidecar: Sidecar) -> dict[str, str]:
@@ -212,7 +242,10 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             body = json.loads(raw or b"{}")
             updated = self.state.update(
-                annotation_id, body.get("status", "approved"), body.get("translation")
+                annotation_id,
+                body.get("status", "approved"),
+                body.get("translation"),
+                spans=body.get("spans"),
             )
         except KeyError:
             self._send(404, b'{"error":"unknown annotation"}', "application/json")

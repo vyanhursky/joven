@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="joven-token" content="{{TOKEN}}"/>
+<title>joven</title>
+<style>
+  :root {
+    --bg: #faf9f7; --fg: #1c1a17; --muted: #6b6560; --line: #e0dcd6;
+    --card: #fff; --es: #fdf3d7; --accent: #2f6f4f; --warn: #9a3b28; --info: #35597a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#191817; --fg:#e9e5df; --muted:#9a938c; --line:#332f2b;
+            --card:#211f1d; --es:#3a3320; --accent:#79b894; --warn:#e08a72; --info:#8fb3d9; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { position:sticky; top:0; z-index:5; background:var(--bg);
+           border-bottom:1px solid var(--line); padding:.6rem 1rem;
+           display:flex; gap:1rem; align-items:center; flex-wrap:wrap; }
+  h1 { font-size:1rem; margin:0 .5rem 0 0; font-weight:700; letter-spacing:.02em; }
+  nav { display:flex; gap:.2rem; flex-wrap:wrap; }
+  nav button { font:inherit; padding:.3rem .7rem; border-radius:6px; cursor:pointer;
+               border:1px solid transparent; background:transparent; color:var(--muted); }
+  nav button.on { color:var(--fg); border-color:var(--line); background:var(--card); }
+  nav button:disabled { opacity:.4; cursor:default; }
+  .spacer { flex:1; }
+  .book-pill, .job-pill { font-size:.8rem; color:var(--muted); padding:.2rem .6rem;
+             border:1px solid var(--line); border-radius:99px; max-width:28rem;
+             overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .job-pill.running { border-color:var(--info); color:var(--info); }
+  .job-pill.failed { border-color:var(--warn); color:var(--warn); }
+  .job-pill.done { border-color:var(--accent); color:var(--accent); }
+  main { max-width:880px; margin:0 auto; padding:1rem; }
+  section[hidden] { display:none; }
+  h2 { font-size:1.05rem; margin:1rem 0 .5rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px;
+          padding:.9rem 1rem; margin-bottom:.8rem; }
+  .card.pick { cursor:pointer; }
+  .card.pick:hover, .card.current { border-color:var(--accent); }
+  .muted { color:var(--muted); }
+  .small { font-size:.82rem; }
+  .row { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; margin-top:.5rem; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:.6rem; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:.6rem .8rem; }
+  .stat b { display:block; font-size:1.3rem; font-variant-numeric:tabular-nums; }
+  .stat span { color:var(--muted); font-size:.78rem; }
+  button, input, select { font:inherit; color:inherit; }
+  button { padding:.36rem .8rem; border-radius:6px; cursor:pointer;
+           border:1px solid var(--line); background:transparent; }
+  button.primary { border-color:var(--accent); color:var(--accent); }
+  button.danger { border-color:var(--warn); color:var(--warn); }
+  button:disabled { opacity:.4; cursor:default; }
+  input, select, textarea { background:transparent; border:1px solid var(--line);
+          border-radius:6px; padding:.4rem .5rem; }
+  input[type=number] { width:6rem; }
+  label.f { display:flex; flex-direction:column; gap:.2rem; font-size:.8rem; color:var(--muted); }
+  label.f > * { color:var(--fg); }
+  .drop { border:2px dashed var(--line); border-radius:10px; padding:1.6rem; text-align:center;
+          color:var(--muted); }
+  .drop.over { border-color:var(--accent); color:var(--accent); }
+  .bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; }
+  .bar > i { display:block; height:100%; background:var(--accent); width:0; transition:width .3s; }
+  pre { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:.8rem;
+        overflow-x:auto; font-size:.8rem; line-height:1.4; white-space:pre-wrap; }
+  .ok { color:var(--accent); } .bad { color:var(--warn); }
+  .finding { padding:.3rem 0; border-bottom:1px solid var(--line); font-size:.9rem; }
+  .finding .detail { color:var(--muted); font-size:.8rem; white-space:pre-wrap; margin-left:3.2rem; }
+  .finding details.detail summary { cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chip { font-size:.76rem; padding:.15rem .55rem; border:1px solid var(--line); border-radius:99px;
+          cursor:pointer; background:transparent; color:var(--muted); }
+  .chip.on { color:var(--fg); border-color:var(--fg); }
+  .error { color:var(--warn); }
+  table { border-collapse:collapse; width:100%; font-size:.85rem; }
+  td, th { text-align:left; padding:.25rem .4rem; border-bottom:1px solid var(--line); }
+  td.n { text-align:right; font-variant-numeric:tabular-nums; }
+  /* review */
+  .rcard { background:var(--card); border:1px solid var(--line); border-radius:8px;
+          padding:.9rem 1rem; margin-bottom:.8rem; }
+  .rcard:focus { outline:2px solid var(--accent); outline-offset:2px; }
+  .rcard.done { opacity:.55; }
+  .rcard.rejected { border-left:3px solid var(--warn); }
+  .rcard.approved, .rcard.edited { border-left:3px solid var(--accent); }
+  .rcard.suspect { border-left:3px solid var(--warn); }
+  .meta { display:flex; gap:.7rem; align-items:center; flex-wrap:wrap;
+          color:var(--muted); font-size:.75rem; margin-bottom:.5rem; }
+  .conf { font-variant-numeric:tabular-nums; font-weight:600; }
+  .sus { background:color-mix(in srgb, var(--warn) 18%, transparent); color:var(--warn);
+         border-radius:3px; padding:.05rem .3rem; font-size:.72rem; font-weight:600; }
+  .pill { font-size:.7rem; padding:.1rem .45rem; border:1px solid var(--line); border-radius:99px; }
+  .ctx { color:var(--muted); font-size:.85rem; font-style:italic; margin-bottom:.35rem; }
+  .para { margin:0 0 .55rem; }
+  .para mark { background:var(--es); color:inherit; padding:.05em .15em; border-radius:3px; }
+  .para.selecting { outline:1px dashed var(--info); outline-offset:4px; cursor:text; user-select:text; }
+  .hint { font-size:.78rem; color:var(--info); }
+  textarea { width:100%; resize:vertical; min-height:2.6rem; }
+  kbd { font:inherit; font-size:.72rem; border:1px solid var(--line); border-radius:4px;
+        padding:0 .3rem; color:var(--muted); }
+  .tr { padding:.5rem 0; border-bottom:1px solid var(--line); cursor:pointer; }
+  .tr:hover { background:color-mix(in srgb, var(--line) 40%, transparent); }
+  .tr .t { font-size:.92rem; }
+  .tr .o { font-size:.75rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .tr.open .more { display:block; }
+  .more { display:none; margin-top:.4rem; font-size:.82rem; }
+  .more dt { color:var(--muted); float:left; clear:left; width:7rem; }
+  .more dd { margin:0 0 .2rem 7.4rem; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>joven</h1>
+  <nav id="tabs">
+    <button data-tab="books" class="on">Books</button>
+    <button data-tab="detect">Detect</button>
+    <button data-tab="review">Review</button>
+    <button data-tab="render">Render</button>
+    <button data-tab="trace">Trace</button>
+  </nav>
+  <span class="spacer"></span>
+  <span class="book-pill" id="bookPill">no book chosen</span>
+  <span class="job-pill" id="jobPill" hidden></span>
+</header>
+<main>
+
+<section id="tab-books">
+  <div class="drop" id="drop">
+    <div><b>Drop an EPUB here</b>, or <label style="text-decoration:underline;cursor:pointer">choose a file<input type="file" id="file" accept=".epub" hidden/></label></div>
+    <div class="small" style="margin-top:.4rem">The book is copied into <code id="homeHint">~/.joven/books/</code>, keyed by its hash, and never edited.</div>
+    <div class="row" style="justify-content:center">
+      <input id="pathBox" placeholder="…or paste a path on this machine" style="min-width:24rem"/>
+      <button id="pathAdd">Add</button>
+    </div>
+  </div>
+  <div id="addError" class="error small"></div>
+  <h2>Books</h2>
+  <div id="bookList"><div class="muted">loading…</div></div>
+  <div id="bookDetail"></div>
+</section>
+
+<section id="tab-detect" hidden>
+  <div class="card">
+    <div class="grid">
+      <label class="f">backend
+        <select id="dBackend"><option value="ollama">ollama</option><option value="openai">openai-compatible</option><option value="none">none (tier 1 only)</option></select>
+      </label>
+      <label class="f">model <input id="dModel" list="modelList"/><datalist id="modelList"></datalist></label>
+      <label class="f">workers <input id="dWorkers" type="number" min="1" max="16" value="1"/></label>
+      <label class="f">limit (paragraphs) <input id="dLimit" type="number" min="1" placeholder="whole book"/></label>
+    </div>
+    <div class="row">
+      <label class="small"><input type="checkbox" id="dResume" checked/> reuse recorded model answers from the last trace</label>
+      <span class="spacer"></span>
+      <button class="primary" id="dStart">Start detect</button>
+      <button class="danger" id="dCancel" hidden>Cancel</button>
+    </div>
+    <div class="small muted" id="serverStatus" style="margin-top:.5rem">checking model servers…</div>
+  </div>
+  <div class="card" id="dProgress" hidden>
+    <div class="bar"><i id="dBar"></i></div>
+    <div class="row small muted" id="dStatus"></div>
+  </div>
+  <div id="dResult"></div>
+</section>
+
+<section id="tab-review">
+  <div class="row" style="margin-bottom:.6rem">
+    <div class="bar" style="flex:1;min-width:140px"><i id="rBar"></i></div>
+    <span class="small muted" id="rCounts"></span>
+    <label class="small muted"><input type="checkbox" id="rHide"/> hide reviewed</label>
+    <span class="small muted"><kbd>j</kbd>/<kbd>k</kbd> move <kbd>a</kbd> approve <kbd>r</kbd> reject <kbd>e</kbd> edit <kbd>s</kbd> span <kbd>ctrl-enter</kbd> save</span>
+  </div>
+  <div id="rList"><div class="muted">choose a book first</div></div>
+</section>
+
+<section id="tab-render" hidden>
+  <div class="card">
+    <div class="row">
+      <div>Apply the sidecar to a fresh copy of the book, make the KEPUB, and run the integrity gate.</div>
+      <span class="spacer"></span>
+      <button class="primary" id="renderStart">Render &amp; verify</button>
+    </div>
+  </div>
+  <div id="renderResult"></div>
+</section>
+
+<section id="tab-trace" hidden>
+  <div class="row" id="traceChips"></div>
+  <div class="row">
+    <input id="traceFind" placeholder="find text…" style="min-width:20rem"/>
+    <span class="small muted" id="traceCount"></span>
+  </div>
+  <div id="traceList"></div>
+</section>
+
+</main>
+<script>
+const TOKEN = document.querySelector('meta[name=joven-token]').content;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $ = id => document.getElementById(id);
+
+async function api(path, opts = {}) {
+  const headers = Object.assign({}, opts.headers || {});
+  if (opts.method && opts.method !== 'GET') headers[ 'X-Joven-Token' ] = TOKEN;
+  if (opts.json !== undefined) { headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(opts.json); }
+  const res = await fetch(path, Object.assign({}, opts, {headers}));
+  const text = await res.text();
+  let data = {}; try { data = text ? JSON.parse(text) : {}; } catch { data = {error: text}; }
+  if (!res.ok) throw new Error(data.error || (res.status + ' ' + res.statusText));
+  return data;
+}
+
+// ------------------------------------------------------------------ state
+const state = {
+  tab: 'books', books: [], current: null, detail: null, job: null, jobPollTimer: null,
+  review: null, hideReviewed: false, focusId: null, selectingId: null,
+  trace: null, traceOutcome: '', traceFind: '', config: null,
+};
+try { state.current = localStorage.getItem('joven.current') || null; } catch {}
+
+// ------------------------------------------------------------------- tabs
+function showTab(name) {
+  state.tab = name;
+  if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'tab-' + name);
+  if (name === 'review') loadReview();
+  if (name === 'trace') loadTrace();
+  if (name === 'detect') refreshServers();
+}
+$('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); });
+
+function setCurrent(sha) {
+  state.current = sha; state.review = null; state.trace = null; state.focusId = null;
+  try { localStorage.setItem('joven.current', sha || ''); } catch {}
+  renderBookPill(); renderBooks(); loadDetail();
+}
+function currentBook() { return state.books.find(b => b.sha === state.current) || null; }
+function renderBookPill() {
+  const b = currentBook();
+  $('bookPill').textContent = b ? (b.title || b.filename) + (b.creator ? ' — ' + b.creator : '') : 'no book chosen';
+  document.querySelectorAll('nav button').forEach(btn => { if (btn.dataset.tab !== 'books') btn.disabled = !b; });
+}
+
+// ------------------------------------------------------------------ books
+async function loadBooks() {
+  const data = await api('/api/books');
+  state.books = data.books;
+  $('homeHint').textContent = data.home;
+  if (state.current && !currentBook()) state.current = null;
+  if (!state.current && state.books.length) state.current = state.books[0].sha;  // most recently added
+  renderBooks(); renderBookPill(); loadDetail();
+}
+function renderBooks() {
+  const list = $('bookList');
+  if (!state.books.length) { list.innerHTML = '<div class="muted">No books yet. Drop an EPUB above.</div>'; return; }
+  list.innerHTML = state.books.map(b => `
+    <div class="card pick ${b.sha === state.current ? 'current' : ''}" data-sha="${b.sha}">
+      <div><b>${esc(b.title || b.filename)}</b> <span class="muted">${esc(b.creator)}</span></div>
+      <div class="small muted">${esc(b.filename)} · ${(b.size/1024).toFixed(0)} KB
+        · ${b.annotations == null ? 'not detected' : b.annotations + ' annotations'}
+        ${b.counts ? '(' + Object.entries(b.counts).filter(([,v]) => v).map(([k,v]) => v + ' ' + k).join(', ') + ')' : ''}
+        · ${b.outputs.length ? b.outputs.length + ' output file(s)' : 'not rendered'}</div>
+    </div>`).join('');
+}
+$('bookList').addEventListener('click', e => { const c = e.target.closest('.card'); if (c) setCurrent(c.dataset.sha); });
+
+async function loadDetail() {
+  const b = currentBook(); const box = $('bookDetail');
+  if (!b) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="muted small">inspecting…</div>';
+  try {
+    const d = await api('/api/books/' + b.sha);
+    state.detail = d;
+    const m = d.inspect.metadata;
+    box.innerHTML = `<h2>${esc(d.title || d.filename)}</h2>
+      <div class="grid">
+        <div class="stat"><b>${d.inspect.words.toLocaleString()}</b><span>words</span></div>
+        <div class="stat"><b>${d.inspect.units.toLocaleString()}</b><span>paragraphs</span></div>
+        <div class="stat"><b>${esc(d.inspect.version)}</b><span>EPUB version</span></div>
+        <div class="stat"><b>${d.inspect.entries}</b><span>archive entries</span></div>
+        <div class="stat"><b>${d.annotations == null ? '—' : d.annotations}</b><span>annotations</span></div>
+        <div class="stat"><b>${d.outputs.length}</b><span>rendered files</span></div>
+      </div>
+      <div class="card" style="margin-top:.8rem">
+        <table>${Object.entries(m).map(([k,v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}
+        <tr><th>sha256</th><td class="small">${d.sha}</td></tr></table>
+      </div>
+      <details class="small"><summary class="muted">spine (${d.inspect.spine.length} documents)</summary>
+        <table>${d.inspect.spine.map(s => `<tr><td>${esc(s.href)}${s.missing ? ' <span class=bad>(MISSING)</span>' : ''}</td><td class="n">${s.units}</td><td class="n">${s.words.toLocaleString()}</td></tr>`).join('')}</table>
+      </details>`;
+  } catch (err) { box.innerHTML = `<div class="error">${esc(err.message)}</div>`; }
+}
+
+async function addFile(file) {
+  $('addError').textContent = '';
+  try {
+    const b = await api('/api/books', {method: 'POST', body: file,
+      headers: {'Content-Type': 'application/epub+zip', 'X-Filename': encodeURIComponent(file.name)}});
+    await loadBooks(); setCurrent(b.sha);
+  } catch (err) { $('addError').textContent = err.message; }
+}
+$('file').addEventListener('change', e => { if (e.target.files[0]) addFile(e.target.files[0]); e.target.value = ''; });
+const drop = $('drop');
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) addFile(e.dataTransfer.files[0]); });
+$('pathAdd').addEventListener('click', async () => {
+  const path = $('pathBox').value.trim(); if (!path) return;
+  $('addError').textContent = '';
+  try { const b = await api('/api/books', {method: 'POST', json: {path}}); $('pathBox').value = ''; await loadBooks(); setCurrent(b.sha); }
+  catch (err) { $('addError').textContent = err.message; }
+});
+
+// ----------------------------------------------------------------- detect
+async function loadConfig() {
+  try {
+    state.config = await api('/api/config');
+    const s = state.config.settings;
+    $('dBackend').value = s.backend === 'stub' ? 'ollama' : s.backend;
+    $('dModel').value = s.model; $('dWorkers').value = s.workers;
+  } catch (err) { $('serverStatus').innerHTML = `<span class="error">${esc(err.message)}</span>`; }
+}
+async function refreshServers() {
+  try {
+    const s = await api('/api/status');
+    const line = (name, srv) => `${name} at ${esc(srv.url)}: ${srv.up ? '<span class=ok>up</span>' + (srv.models.length ? ' — ' + srv.models.map(esc).join(', ') : '') : '<span class=bad>not answering</span>'}`;
+    $('serverStatus').innerHTML = line('ollama', s.ollama) + '<br>' + line('openai-compatible', s.openai);
+    const which = $('dBackend').value === 'openai' ? s.openai : s.ollama;
+    $('modelList').innerHTML = which.models.map(m => `<option value="${esc(m)}">`).join('');
+  } catch (err) { $('serverStatus').innerHTML = `<span class="error">${esc(err.message)}</span>`; }
+}
+$('dBackend').addEventListener('change', refreshServers);
+$('dStart').addEventListener('click', async () => {
+  const b = currentBook(); if (!b) return;
+  $('dResult').innerHTML = '';
+  try {
+    await api('/api/books/' + b.sha + '/detect', {method: 'POST', json: {
+      backend: $('dBackend').value, model: $('dModel').value.trim(), workers: +$('dWorkers').value || 1,
+      limit: $('dLimit').value ? +$('dLimit').value : null, resume: $('dResume').checked }});
+    pollJobs(true);
+  } catch (err) { $('dResult').innerHTML = `<div class="error">${esc(err.message)}</div>`; }
+});
+$('dCancel').addEventListener('click', () => api('/api/jobs/cancel', {method: 'POST'}));
+$('renderStart').addEventListener('click', async () => {
+  const b = currentBook(); if (!b) return;
+  $('renderResult').innerHTML = '';
+  try { await api('/api/books/' + b.sha + '/render', {method: 'POST'}); pollJobs(true); }
+  catch (err) { $('renderResult').innerHTML = `<div class="error">${esc(err.message)}</div>`; }
+});
+
+// -------------------------------------------------------------------- jobs
+let lastJobId = null;
+async function pollJobs(force) {
+  const data = await api('/api/jobs');
+  const job = data.current;
+  state.job = job;
+  renderJob(job);
+  const running = job && job.state === 'running';
+  if (running) { clearTimeout(state.jobPollTimer); state.jobPollTimer = setTimeout(() => pollJobs(false), 1000); }
+  if (job && job.state !== 'running' && (force || job.id !== lastJobId)) {
+    lastJobId = job.id;
+    await loadBooks();
+    if (job.kind === 'detect') { state.review = null; state.trace = null; if (state.tab === 'review') loadReview(); if (state.tab === 'trace') loadTrace(); }
+  }
+}
+function renderJob(job) {
+  const pill = $('jobPill');
+  if (!job) { pill.hidden = true; $('dProgress').hidden = true; $('dCancel').hidden = true; $('dStart').disabled = false; $('renderStart').disabled = false; return; }
+  const running = job.state === 'running';
+  pill.hidden = false; pill.className = 'job-pill ' + job.state;
+  const p = job.progress;
+  pill.textContent = `${job.kind}: ${job.state}` + (running && p ? ` · ${p.paragraphs_done}/${p.paragraphs_total}` : '') + (!running ? ` · ${job.elapsed.toFixed(0)}s` : '');
+  $('dStart').disabled = running; $('renderStart').disabled = running;
+  $('dCancel').hidden = !(running && job.kind === 'detect');
+
+  if (job.kind === 'detect') {
+    $('dProgress').hidden = !p && running ? false : !p;
+    if (p) {
+      $('dBar').style.width = (p.paragraphs_total ? 100 * p.paragraphs_done / p.paragraphs_total : 0) + '%';
+      $('dStatus').innerHTML = `<span>${p.paragraphs_done.toLocaleString()} / ${p.paragraphs_total.toLocaleString()} paragraphs</span>
+        <span>${p.escalated.toLocaleString()} escalated</span><span>${p.annotated.toLocaleString()} footnotes</span>
+        ${p.recalled ? `<span>${p.recalled.toLocaleString()} recalled</span>` : ''}
+        ${p.errors ? `<span class="bad">${p.errors} errors</span>` : ''}
+        ${p.last_latency_s ? `<span>${p.last_latency_s.toFixed(1)}s/call</span>` : ''}
+        <span>${job.elapsed.toFixed(0)}s</span>`;
+    }
+    if (!running) {
+      const r = job.result || {};
+      $('dResult').innerHTML = job.state === 'failed'
+        ? `<div class="card"><div class="error">${esc(job.error)}</div><details><summary class="small muted">traceback</summary><pre>${esc(r.traceback || '')}</pre></details></div>`
+        : `<div class="card">
+             <div><b>${job.state === 'cancelled' ? 'Stopped' : 'Done'}</b> — ${r.found} annotation(s) found in ${r.paragraphs.toLocaleString()} of ${r.paragraphs_total.toLocaleString()} paragraphs with ${esc(r.backend)}; sidecar now holds ${r.sidecar_total}.
+             ${r.merged ? `<span class="muted small">merged: ${r.merged.added} added, ${r.merged.updated} updated, ${r.merged.kept_human} human edits kept, ${r.merged.suppressed} suppressed</span>` : ''}
+             ${job.state === 'cancelled' ? '<div class="small muted">Everything the model answered is in the trace; start again with "reuse recorded answers" ticked to pick up where this stopped.</div>' : ''}</div>
+             <pre>${esc(r.report)}</pre>
+             ${r.errors && r.errors.length ? `<div class="bad small">${r.errors.map(e => esc(e.text) + ' — ' + esc(e.error)).join('<br>')}</div>` : ''}
+           </div>`;
+    }
+  }
+  if (job.kind === 'render' && !running) {
+    const r = job.result || {};
+    const b = currentBook();
+    $('renderResult').innerHTML = job.state === 'failed'
+      ? `<div class="card"><div class="error">${esc(job.error)}</div></div>`
+      : `<div class="card">
+          <div><b class="${r.passed ? 'ok' : 'bad'}">${r.passed ? 'All checks passed' : 'Some checks FAILED'}</b> — applied ${r.applied} of ${r.renderable} renderable annotation(s) across ${r.documents} document(s)${r.upgraded ? ', upgraded to EPUB 3' : ''}.</div>
+          ${!r.kepubify ? '<div class="small bad">kepubify is not on PATH, so no .kepub.epub was made.</div>' : ''}
+          <div class="row">
+            ${b && r.epub ? `<a href="/api/books/${b.sha}/files/${encodeURIComponent(r.epub)}"><button>Download ${esc(r.epub)}</button></a>` : ''}
+            ${b && r.kepub ? `<a href="/api/books/${b.sha}/files/${encodeURIComponent(r.kepub)}"><button class="primary">Download ${esc(r.kepub)} → copy to the Kobo</button></a>` : ''}
+          </div>
+          <div style="margin-top:.6rem">${(r.findings || []).map(f => `<div class="finding"><b class="${f.ok ? 'ok' : 'bad'}">[${f.ok ? 'PASS' : 'FAIL'}]</b> ${esc(f.check)}${f.detail ? (f.detail.length > 240 && f.ok ? `<details class="detail"><summary>${esc(f.detail.slice(0, 80))}…</summary>${esc(f.detail)}</details>` : `<div class="detail">${esc(f.detail)}</div>`) : ''}</div>`).join('')}</div>
+        </div>`;
+  }
+}
+
+// ------------------------------------------------------------------ review
+async function loadReview() {
+  const b = currentBook(); const list = $('rList');
+  if (!b) { list.innerHTML = '<div class="muted">choose a book first</div>'; return; }
+  if (!state.review) {
+    list.innerHTML = '<div class="muted">loading…</div>';
+    try { state.review = await api('/api/books/' + b.sha + '/review'); }
+    catch (err) { list.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
+  }
+  renderReview();
+}
+const cards = () => [...document.querySelectorAll('.rcard')];
+const cardFor = id => id ? document.querySelector(`.rcard[data-id="${id}"]`) : null;
+const unreviewed = c => !c.classList.contains('done');
+function focusCard(id) { const el = cardFor(id); if (!el) return; state.focusId = id; el.focus({preventScroll: true}); el.scrollIntoView({block: 'nearest'}); }
+function nextAfter(id) {
+  const all = cards(); const i = all.findIndex(c => c.dataset.id === id);
+  const t = all.slice(i + 1).find(unreviewed) || all.find(unreviewed);
+  return t ? t.dataset.id : id;
+}
+function paragraph(a) { return a.segments.map(s => s.spanish ? `<mark>${esc(s.text)}</mark>` : esc(s.text)).join(''); }
+function renderReview() {
+  const data = state.review;
+  const pct = data.total ? Math.round(100 * data.reviewed / data.total) : 0;
+  $('rBar').style.width = pct + '%';
+  $('rCounts').textContent = data.total
+    ? `${data.reviewed}/${data.total} reviewed · ` + (data.suspect ? `${data.suspect} flagged · ` : '') + Object.entries(data.counts).filter(([,v]) => v).map(([k,v]) => `${v} ${k}`).join(', ')
+    : 'no annotations yet — run detect';
+  const list = $('rList');
+  const shown = data.annotations.filter(a => !(state.hideReviewed && a.status !== 'auto'));
+  if (!shown.length) { list.innerHTML = `<div class="muted" style="text-align:center;padding:2rem">${data.total ? 'nothing left to review 🎉' : 'no annotations yet — run detect'}</div>`; return; }
+  list.innerHTML = shown.map(a => {
+    const done = a.status !== 'auto';
+    const sus = a.suspicions || [];
+    const cls = [sus.length && !done ? 'suspect' : '', done ? 'done ' + a.status : ''].join(' ');
+    const selecting = state.selectingId === a.id;
+    return `<article class="rcard ${cls}" data-id="${a.id}" tabindex="0">
+      <div class="meta">
+        <span class="conf">${a.detector_confidence.toFixed(2)}</span>
+        <span>${esc(a.href.split('/').pop())}#${a.para_index}</span>
+        ${a.model ? `<span class="pill">${esc(a.model)}</span>` : ''}
+        ${done ? `<span class="pill">${a.status}</span>` : ''}
+        ${sus.map(s => `<span class="sus">${esc(s)}</span>`).join('')}
+      </div>
+      ${a.context ? `<div class="ctx">…${esc(a.context)}</div>` : ''}
+      <p class="para ${selecting ? 'selecting' : ''}">${paragraph(a)}</p>
+      ${selecting ? '<div class="hint">Select the Spanish with the mouse; release to save the new span. <kbd>esc</kbd> cancels.</div>' : ''}
+      <textarea rows="2">${esc(a.translation)}</textarea>
+      <div class="row">
+        <button class="primary" data-act="approved">Approve</button>
+        <button data-act="save">Save edit</button>
+        <button data-act="span">${selecting ? 'Cancel span edit' : 'Edit span'}</button>
+        <button class="danger" data-act="rejected">Reject — not Spanish</button>
+      </div>
+    </article>`;
+  }).join('');
+  if (!cardFor(state.focusId)) { const first = cards().find(unreviewed) || cards()[0]; state.focusId = first ? first.dataset.id : null; }
+  focusCard(state.focusId);
+}
+async function decide(card, status, extra = {}) {
+  const b = currentBook(); const id = card.dataset.id; const next = nextAfter(id);
+  const translation = card.querySelector('textarea').value;
+  let out;
+  try { out = await api(`/api/books/${b.sha}/annotations/${id}`, {method: 'POST', json: Object.assign({status, translation}, extra)}); }
+  catch (err) { alert('save failed: ' + err.message); return; }
+  const a = state.review.annotations.find(x => x.id === id);
+  a.status = out.status; a.translation = out.translation;
+  if (extra.spans) { a.spans = out.spans; a.segments = segmentsFor(a); a.spanish_text = a.spans.map(([s,e]) => a.source_text.slice(s,e).trim()).join(' '); }
+  state.review.counts = out.counts;
+  state.review.reviewed = Object.entries(out.counts).filter(([k]) => k !== 'auto').reduce((n, [,v]) => n + v, 0);
+  state.selectingId = null;
+  state.focusId = extra.spans ? id : next;
+  renderReview();
+}
+function segmentsFor(a) {
+  const out = []; let cursor = 0;
+  for (const [s, e] of [...a.spans].sort((x, y) => x[0] - y[0])) {
+    if (s > cursor) out.push({spanish: false, text: a.source_text.slice(cursor, s)});
+    out.push({spanish: true, text: a.source_text.slice(s, e)}); cursor = e;
+  }
+  if (cursor < a.source_text.length) out.push({spanish: false, text: a.source_text.slice(cursor)});
+  return out;
+}
+function step(delta) {
+  const all = cards(); if (!all.length) return;
+  const i = Math.max(0, all.findIndex(c => c.dataset.id === state.focusId));
+  focusCard(all[Math.min(all.length - 1, Math.max(0, i + delta))].dataset.id);
+}
+function toggleSpanEdit(card) {
+  state.selectingId = state.selectingId === card.dataset.id ? null : card.dataset.id;
+  state.focusId = card.dataset.id; renderReview();
+}
+// Offsets of the mouse selection within the paragraph's text: the paragraph is a
+// flat run of text nodes and <mark>s, so counting characters before the range
+// start gives the offset into source_text directly.
+function selectionOffsets(paraEl) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  if (!paraEl.contains(range.startContainer) || !paraEl.contains(range.endContainer)) return null;
+  const before = document.createRange(); before.setStart(paraEl, 0); before.setEnd(range.startContainer, range.startOffset);
+  const start = before.toString().length;
+  const end = start + range.toString().length;
+  return end > start ? [start, end] : null;
+}
+$('rList').addEventListener('mouseup', e => {
+  const para = e.target.closest('.para.selecting'); if (!para) return;
+  const card = para.closest('.rcard');
+  setTimeout(() => {
+    const offsets = selectionOffsets(para); if (!offsets) return;
+    const a = state.review.annotations.find(x => x.id === card.dataset.id);
+    // trim whitespace the drag picked up at either end
+    let [s, e] = offsets; const text = a.source_text;
+    while (s < e && /\s/.test(text[s])) s++;
+    while (e > s && /\s/.test(text[e - 1])) e--;
+    if (e <= s) return;
+    window.getSelection().removeAllRanges();
+    decide(card, 'edited', {spans: [[s, e]]});
+  }, 0);
+});
+$('rList').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-act]'); if (!btn) return;
+  const card = btn.closest('.rcard'); const act = btn.dataset.act;
+  if (act === 'span') toggleSpanEdit(card); else decide(card, act === 'save' ? 'edited' : act);
+});
+$('rList').addEventListener('focusin', e => { const c = e.target.closest('.rcard'); if (c) state.focusId = c.dataset.id; });
+$('rHide').addEventListener('change', e => { state.hideReviewed = e.target.checked; renderReview(); });
+document.addEventListener('keydown', e => {
+  if (state.tab !== 'review') return;
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') {
+    const card = e.target.closest('.rcard'); if (!card) return;
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); decide(card, 'edited'); }
+    else if (e.key === 'Escape') card.focus();
+    return;
+  }
+  if (e.key === 'Escape' && state.selectingId) { state.selectingId = null; renderReview(); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'j') { e.preventDefault(); step(1); return; }
+  if (e.key === 'k') { e.preventDefault(); step(-1); return; }
+  const card = cardFor(state.focusId); if (!card) return;
+  if (e.key === 'a') decide(card, 'approved');
+  else if (e.key === 'r') decide(card, 'rejected');
+  else if (e.key === 'e') { card.querySelector('textarea').focus(); e.preventDefault(); }
+  else if (e.key === 's') { toggleSpanEdit(card); e.preventDefault(); }
+});
+
+// ------------------------------------------------------------------- trace
+const OUTCOMES = ['annotated','tier2_rejected','tier2_vetoed','embedded_loanword','tier2_error','tier1_english','tier1_empty'];
+async function loadTrace() {
+  const b = currentBook(); const list = $('traceList');
+  if (!b) { list.innerHTML = '<div class="muted">choose a book first</div>'; return; }
+  list.innerHTML = '<div class="muted">loading…</div>';
+  try {
+    const q = new URLSearchParams({outcome: state.traceOutcome, find: state.traceFind, limit: '200'});
+    state.trace = await api(`/api/books/${b.sha}/trace?` + q);
+  } catch (err) { list.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
+  renderTrace();
+}
+function renderTrace() {
+  const t = state.trace;
+  $('traceChips').innerHTML = `<button class="chip ${!state.traceOutcome ? 'on' : ''}" data-o="">all ${t.total.toLocaleString()}</button>` +
+    OUTCOMES.filter(o => t.counts[o]).map(o => `<button class="chip ${state.traceOutcome === o ? 'on' : ''}" data-o="${o}">${o} ${t.counts[o].toLocaleString()}</button>`).join('');
+  $('traceCount').textContent = t.total ? `${t.matching.toLocaleString()} matching, showing ${t.decisions.length}` : 'no trace yet — run detect';
+  $('traceList').innerHTML = t.decisions.map((d, i) => `
+    <div class="tr" data-i="${i}">
+      <div class="t">${esc(d.text)}</div>
+      <div class="o">${esc(d.href.split('/').pop())}#${d.para_index}.${d.segment_index} · <b>${esc(d.outcome)}</b> · tier 1 ${esc(d.tier1_language)} ${d.tier1_confidence.toFixed(2)} (${esc(d.tier1_reason)})${d.tier2_used ? ` · tier 2 ${esc(d.tier2_model)} ${d.tier2_latency_s.toFixed(1)}s → ${d.tier2_is_spanish ? 'Spanish' : 'not Spanish'}` : ''}</div>
+      <dl class="more">
+        ${d.tier1_stripped ? `<dt>stripped</dt><dd>${esc(d.tier1_stripped)}</dd>` : ''}
+        ${d.tier2_spanish_text ? `<dt>span</dt><dd>${esc(d.tier2_spanish_text)}</dd>` : ''}
+        ${d.tier2_translation ? `<dt>translation</dt><dd>${esc(d.tier2_translation)}</dd>` : ''}
+        ${d.tier2_raw ? `<dt>raw reply</dt><dd>${esc(d.tier2_raw)}</dd>` : ''}
+        ${d.tier2_error ? `<dt class="bad">error</dt><dd class="bad">${esc(d.tier2_error)}</dd>` : ''}
+      </dl>
+    </div>`).join('');
+}
+$('traceChips').addEventListener('click', e => { const c = e.target.closest('.chip'); if (!c) return; state.traceOutcome = c.dataset.o; loadTrace(); });
+let findTimer = null;
+$('traceFind').addEventListener('input', e => { clearTimeout(findTimer); findTimer = setTimeout(() => { state.traceFind = e.target.value.trim(); loadTrace(); }, 300); });
+$('traceList').addEventListener('click', e => { const row = e.target.closest('.tr'); if (row) row.classList.toggle('open'); });
+
+// -------------------------------------------------------------------- boot
+(async () => {
+  await loadConfig();
+  await loadBooks();
+  // #detect, #review, ... deep-link a tab; otherwise land where the work is.
+  const wanted = location.hash.slice(1);
+  const known = ['books', 'detect', 'review', 'render', 'trace'];
+  if (known.includes(wanted) && (wanted === 'books' || currentBook())) showTab(wanted);
+  else showTab(currentBook() ? (currentBook().annotations != null ? 'review' : 'detect') : 'books');
+  window.addEventListener('hashchange', () => {
+    const name = location.hash.slice(1);
+    if (known.includes(name) && name !== state.tab) showTab(name);
+  });
+  pollJobs(false);
+})();
+</script>
+</body>
+</html>
