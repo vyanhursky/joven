@@ -19,8 +19,6 @@ import re
 import sys
 from pathlib import Path
 
-from joven.console import force_utf8_output
-
 ROOT = Path(__file__).resolve().parent.parent
 CHANGELOG = ROOT / "CHANGELOG.md"
 
@@ -50,7 +48,11 @@ def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print(__doc__, file=sys.stderr)
         return 2
-    force_utf8_output()  # the CHANGELOG has em dashes; a cp1252 stdout would drop them
+    # The CHANGELOG has em dashes and a cp1252 stdout would drop them. Done here
+    # rather than via joven.console because CI runs this before the package is
+    # installed -- which is exactly what broke the first tag that used it.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     try:
         sys.stdout.write(section(CHANGELOG.read_text(encoding="utf-8"), argv[1]))
     except LookupError as exc:
