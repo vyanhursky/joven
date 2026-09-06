@@ -26,7 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = [
     "README.md",
-    "DESIGN.md",
+    "docs/architecture.md",
     "docs/model-selection.md",
     "docs/troubleshooting.md",
     "docs/anatomy-of-a-call.md",

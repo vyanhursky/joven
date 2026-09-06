@@ -1,6 +1,6 @@
 """Tier 1: cheap statistical triage with an explicit abstention band.
 
-Measured behaviour of `lingua` on this book (DESIGN.md §2):
+Measured behaviour of `lingua` on this book (docs/architecture.md):
 
 * Confident calls are excellent in both directions — real Spanish lands at
   0.90-1.00, real English at 0.99.
@@ -63,7 +63,7 @@ def is_embedded_loanword(
 ) -> bool:
     """True when the Spanish is a word or two *inside* an otherwise English clause.
 
-    Policy (DESIGN.md §1.1 pattern C, confirmed): a single Spanish word embedded in
+    Policy (mixing pattern C in the README): a single Spanish word embedded in
     English prose does **not** get a footnote. McCarthy uses ``matríz``, ``copo``,
     ``candela``, ``vaquero`` as texture in English narration, and annotating every
     one produces constant noise for negligible gain.
@@ -89,7 +89,7 @@ def is_embedded_loanword(
     if not spanish_text.strip():
         return False
 
-    # The policy is about a single *word* (DESIGN.md §7, embedded loanwords).
+    # The policy is about a single *word* (docs/architecture.md, embedded loanword).
     # Anything longer is a Spanish utterance the reader needs, however much
     # English surrounds it — and the surrounding-English test alone got these
     # badly wrong on the full book:
@@ -185,7 +185,7 @@ def looks_latin(text: str) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class Triager:
-    """Bands tuned to the measurements in DESIGN.md §2.
+    """Bands tuned to the measurements in docs/architecture.md
 
     ``accept_spanish`` is deliberately high: a spurious footnote on ``Go on.`` is
     far more damaging to the reading experience than a missed one, so we would

@@ -56,7 +56,7 @@ def test_note_body_and_its_tail_both_excluded() -> None:
 
 
 def test_multi_span_paragraph_roundtrips() -> None:
-    """Case B/D from DESIGN.md §1.1 — Spanish runs split by an English tag."""
+    """Mixing patterns B and D: Spanish runs split by an English tag."""
     original = _html(
         "<p>Escúchame, joven, he said. Yo no sé nada. Esto es la verdad.</p>"
     )

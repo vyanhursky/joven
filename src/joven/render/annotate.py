@@ -128,7 +128,7 @@ class FootnoteRenderer(_Base):
     """EPUB 3 popup footnotes, in the arrangement Kobo actually honours.
 
     The shape is not a matter of taste — it is what a device test settled
-    (DESIGN.md §6.6b), and each part of it fixes an observed failure:
+    (docs/architecture.md, Kobo footnotes), and each part of it fixes an observed failure:
 
     **One note per file.** Kobo's footnote preview does not stop at the target
     element. With the notes as siblings in the chapter it rendered the tapped note

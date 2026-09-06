@@ -81,7 +81,7 @@ translation
 
 Answer with JSON only."""
 
-# Few-shot examples covering the four mixing patterns from DESIGN.md §1.1.
+# Few-shot examples covering the four mixing patterns the README describes.
 # These carry most of the span-precision performance — see docs/model-selection.md.
 FEWSHOT: list[tuple[str, dict]] = [
     (

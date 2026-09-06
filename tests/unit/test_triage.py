@@ -1,4 +1,4 @@
-"""Tier-1 triage behaviour, including the adversarial cases from DESIGN.md §2.2.
+"""Tier-1 triage behaviour, including the adversarial cases from docs/architecture.md
 
 The bands are a product decision, not an implementation detail: a spurious
 footnote on ``Go on.`` is worse for the reading experience than a missed one, so

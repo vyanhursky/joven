@@ -5,7 +5,7 @@ what levers actually improve translation quality, the flags that exist for
 debugging rather than for use, and the Kobo behaviour worth knowing before you
 blame the tool.
 
-For *why* the pipeline is shaped this way, see [DESIGN.md](../DESIGN.md).
+For *why* the pipeline is shaped this way, see [architecture.md](architecture.md).
 
 ---
 
@@ -48,7 +48,7 @@ joven explain trace.jsonl --find "Stabat Mater"
 
 `reason: latin, not spanish` means the Latin veto caught it — Tier 1's detector
 knows only English and Spanish, so a third language is asked about separately before
-a passage can be accepted outright (DESIGN.md §2.6). If it vetoed something that
+a passage can be accepted outright (architecture.md (the Latin veto)). If it vetoed something that
 really is Spanish, `Triager(veto_latin=False)` turns it off, and the case is worth
 reporting: measured over 1,094 known-Spanish passages it rejected none.
 
@@ -120,7 +120,7 @@ Three levers, in order of how much they are worth:
    language call was, not whether the translation is right, and the full-book run
    showed quality is uniformly good across every confidence band. What does predict
    a bad footnote is a word the model could not translate surviving verbatim into
-   the English — see [DESIGN.md §6.4](../DESIGN.md).
+   the English — see [architecture.md](architecture.md).
 
 3. **A larger local model.** `qwen3:8b` won on the benchmark against the other 8B
    candidates ([model-selection.md](model-selection.md)); a larger model is the
@@ -172,7 +172,7 @@ the first two note documents in the spine; the rest navigate to the note page an
 offer a "Back to page N" link. This is position-dependent, not length-dependent —
 a 250-character note previews while a 50-character one jumps — and it was measured
 on hardware with a purpose-built calibration book
-([DESIGN.md §6.6b](../DESIGN.md)). It is a worse reading experience than a preview,
+([architecture.md](architecture.md)). It is a worse reading experience than a preview,
 not a bug, and chasing it further would mean fighting an undocumented cache
 heuristic for cosmetic gain.
 
