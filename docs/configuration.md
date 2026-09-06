@@ -54,7 +54,7 @@ normally use.
 | `epubcheck_jar` | *(empty)* | Path to `epubcheck.jar` when there is no launcher on `PATH` |
 | `context_chars` | `400` | Preceding prose handed to the model with each paragraph |
 | `accept_spanish` | `0.90` | Tier-1 thresholds. The defaults are the measured ones — |
-| `reject_english` | `0.90` | [DESIGN.md §2](../DESIGN.md) and |
+| `reject_english` | `0.90` | [architecture.md](architecture.md) and |
 | `accept_spanish_stripped` | `0.95` | [model-selection.md](model-selection.md) say why each |
 | `similarity_veto` | `0.75` | sits where it does. Move them for an experiment, then replay the gates. |
 

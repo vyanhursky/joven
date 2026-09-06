@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark local Ollama models on the adversarial cases from DESIGN.md §2.2.
+"""Benchmark local Ollama models on the adversarial cases from docs/architecture.md
 
 This decides which local model we ship. The cases are the ones that actually
 break things: short Spanish fragments welded to English dialogue tags, short

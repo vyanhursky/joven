@@ -1,7 +1,7 @@
 """Shared fixtures.
 
 The synthetic EPUB deliberately mirrors the quirks of the real target book (see
-DESIGN.md §1): EPUB 2.0, flat ``<p class="calibre4">`` paragraphs with no inline
+the README): EPUB 2.0, flat ``<p class="calibre4">`` paragraphs with no inline
 markup, single-quoted XML declarations, and a Calibre-style split spine. Tests
 run against this so the copyrighted book never needs to be committed.
 """
@@ -79,7 +79,7 @@ def _doc(paragraphs: list[str]) -> str:
 """
 
 
-# Mirrors the four mixing patterns from DESIGN.md §1.1
+# Mirrors the four mixing patterns the README describes
 PART1_PARAGRAPHS = [
     "He turned the horse out along the rutted track and rode on.",
     "Se fué.",  # A: whole-paragraph Spanish

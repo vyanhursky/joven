@@ -295,7 +295,7 @@ def test_footnote_css_never_hides_the_note() -> None:
 
     A ``display: none`` target generates no layout box, so a reader that treats
     the marker as an ordinary internal link has nowhere to scroll and falls back
-    to the start of the book. Device-confirmed; see DESIGN.md §6.6b.
+    to the start of the book. Device-confirmed; see docs/architecture.md, Kobo footnotes.
     """
     assert "display: none" not in get_renderer("footnote").css()
 

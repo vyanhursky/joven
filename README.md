@@ -96,7 +96,7 @@ D  Escúchame, joven, the old man wheezed.  Spanish opener, then English narrati
 
 C and D are why per-paragraph language detection fails in *both* directions: C is a
 false positive waiting to happen, D is a guaranteed miss. Solving that is most of
-what this tool is — see [DESIGN.md §2](DESIGN.md) for the measurements.
+what this tool is — see [docs/architecture.md](docs/architecture.md) for the measurements.
 
 ## What you get
 
@@ -478,7 +478,7 @@ the "leave English alone" side above **99.9%**.
 That control run is what found the defects fixed in `v1.0.0b3`. It first produced
 **six** false positives, of which three were Latin liturgy — a two-language detector
 cannot answer "neither", so it called `Stabat Mater Dolorosa.` Spanish at 0.94. Both
-tiers were blind to it and both are now fixed; see [DESIGN.md §2.6](DESIGN.md).
+tiers were blind to it and both are now fixed; see [docs/architecture.md](docs/architecture.md).
 
 The two that remain are honest hard cases: `Ay.` (English here, Spanish elsewhere)
 and `No suh.` → "No sir.", dialect English that the similarity veto misses at a 0.67
@@ -542,7 +542,7 @@ python tools/bench_pipeline.py           # the two-tier system that actually shi
 
 | | |
 |---|---|
-| [DESIGN.md](DESIGN.md) | Why the architecture is shaped this way — the measurements behind every decision, what the device tests overturned, and the work deliberately left undone |
+| [docs/architecture.md](docs/architecture.md) | Why the architecture is shaped this way — the measurements behind every decision, what the device tests overturned, and the work deliberately left undone |
 | [docs/model-selection.md](docs/model-selection.md) | The local-model benchmark: why `qwen3:8b` |
 | [docs/anatomy-of-a-call.md](docs/anatomy-of-a-call.md) | What the local model is asked, what it may answer, and the gates that check it |
 | [docs/browser-ui.md](docs/browser-ui.md) | `joven ui`: the whole workflow in one local page, with screenshots |

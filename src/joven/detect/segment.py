@@ -102,7 +102,7 @@ def segment(paragraph: str) -> list[Segment]:
 def merge_adjacent(segments: list[Segment], paragraph: str) -> list[tuple[int, int]]:
     """Collapse contiguous segments into merged ``(start, end)`` spans.
 
-    Per DESIGN.md §4.5 the annotation unit is the paragraph, so a run of
+    Per docs/architecture.md the annotation unit is the paragraph, so a run of
     consecutive Spanish sentences becomes one footnote rather than three markers.
     Segments separated only by whitespace are treated as contiguous.
     """

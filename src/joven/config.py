@@ -21,7 +21,7 @@ the tests keep a real filesystem out of the picture and how a one-off experiment
 can carry its own settings without touching the ones you use.
 
 The thresholds are here so an experiment can move them without editing source, but
-the shipped defaults are the measured ones (DESIGN.md §2, model-selection.md) and
+the shipped defaults are the measured ones (docs/architecture.md, model-selection.md) and
 ``joven config`` prints every value with its source so a stale experiment cannot
 masquerade as the default.
 """

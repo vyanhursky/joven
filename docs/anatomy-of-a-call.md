@@ -4,7 +4,7 @@ What the local model is actually asked, what it is allowed to answer, and what
 happens to its answer afterwards. The [README](../README.md#how-it-works) covers
 the shape of a call and why there are two prompts; this is the detail underneath.
 
-For why the pipeline is built this way at all, see [DESIGN.md](../DESIGN.md).
+For why the pipeline is built this way at all, see [architecture.md](architecture.md).
 
 ---
 
