@@ -34,6 +34,7 @@ from ..translate import (
     installed_models,
     ollama_available,
     openai_available,
+    pull_model,
 )
 from ..verify import verify as run_verify
 from .workspace import Book
@@ -223,6 +224,42 @@ def detect_job(
             "backend": translator.name if translator is not None else "none",
             "stopped": job.stop,
         }
+
+    return run
+
+
+def pull_job(model: str, base_url: str) -> Callable[[Job], dict]:
+    """Download a model, as the Setup tab's one repair button.
+
+    It runs through the same runner as detect and render, which is what keeps it
+    from competing with a detect for the model server. Progress is per-layer, so
+    the totals go up as new layers start — the page shows the current layer rather
+    than pretending to know the whole download up front.
+    """
+
+    def run(job: Job) -> dict:
+        last: dict[str, object] = {}
+        for update in pull_model(model, base_url, should_stop=lambda: job.stop):
+            last = update
+            job.progress = {
+                "status": update["status"],
+                "completed": update["completed"],
+                "total": update["total"],
+                "model": model,
+            }
+        if job.stop:
+            return {"model": model, "stopped": True, "status": last.get("status", "")}
+
+        # Ollama answering 'success' is not the same as the model being listed, and
+        # the listing is what every other part of Joven asks.
+        pulled = installed_models(base_url)
+        wanted = model if ":" in model else f"{model}:latest"
+        if wanted not in pulled and model not in pulled:
+            raise RuntimeError(
+                f"the pull reported {last.get('status', 'nothing')!r} but {model!r} is still "
+                f"not listed by {base_url}"
+            )
+        return {"model": model, "stopped": False, "status": last.get("status", "")}
 
     return run
 

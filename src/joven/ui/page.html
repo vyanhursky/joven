@@ -106,13 +106,29 @@
   .more { display:none; margin-top:.4rem; font-size:.82rem; }
   .more dt { color:var(--muted); float:left; clear:left; width:7rem; }
   .more dd { margin:0 0 .2rem 7.4rem; white-space:pre-wrap; }
+  /* Setup: one row per dependency, its state carried by a dot rather than colour
+     alone, so the page still reads when colour does not arrive. */
+  .chk { display:flex; gap:.6rem; align-items:baseline; padding:.45rem 0;
+         border-bottom:1px solid var(--line); }
+  .chk:last-child { border-bottom:0; }
+  .chk .dot { flex:none; width:1.1rem; text-align:center; font-weight:700; }
+  .chk.ok   .dot { color:var(--accent); }
+  .chk.warn .dot { color:var(--info); }
+  .chk.fail .dot { color:var(--warn); }
+  .chk .who { flex:none; width:8.5rem; font-weight:600; }
+  .chk .what { flex:1; min-width:12rem; }
+  .chk .hint { display:block; color:var(--muted); font-size:.82rem; margin-top:.15rem; }
+  .verdict { font-weight:600; padding:.5rem 0; }
+  .verdict.ready { color:var(--accent); }
+  .verdict.blocked { color:var(--warn); }
 </style>
 </head>
 <body>
 <header>
   <h1>joven</h1>
   <nav id="tabs">
-    <button data-tab="books" class="on">Books</button>
+    <button data-tab="setup">Setup</button>
+    <button data-tab="books">Books</button>
     <button data-tab="detect">Detect</button>
     <button data-tab="review">Review</button>
     <button data-tab="render">Render</button>
@@ -124,7 +140,30 @@
 </header>
 <main>
 
-<section id="tab-books">
+<section id="tab-setup" hidden>
+  <div class="card">
+    <div id="setupVerdict" class="verdict muted">checking…</div>
+    <div id="setupChecks"></div>
+    <div class="row">
+      <button id="setupRecheck">Check again</button>
+      <button class="primary" id="setupPull" hidden>Pull model</button>
+      <button class="danger" id="setupPullCancel" hidden>Cancel download</button>
+      <a id="setupOllama" href="https://ollama.com/download" target="_blank" rel="noreferrer noopener" hidden>Download Ollama</a>
+    </div>
+    <div id="setupPullError" class="error small"></div>
+  </div>
+  <div class="card" id="setupProgress" hidden>
+    <div class="bar"><i id="setupBar"></i></div>
+    <div class="stat" id="setupPullStatus"></div>
+  </div>
+  <div class="card small muted">
+    Joven runs the model on this machine — nothing about your book leaves it. The
+    translation model is a separate download (about 6 GB) because it is the one
+    piece too large to ship inside the app.
+  </div>
+</section>
+
+<section id="tab-books" hidden>
   <div class="drop" id="drop">
     <div><b>Drop an EPUB here</b>, or <label style="text-decoration:underline;cursor:pointer">choose a file<input type="file" id="file" accept=".epub" hidden/></label></div>
     <div class="small" style="margin-top:.4rem">The book is copied into <code id="homeHint">~/.joven/books/</code>, keyed by its hash, and never edited.</div>
@@ -164,7 +203,7 @@
   <div id="dResult"></div>
 </section>
 
-<section id="tab-review">
+<section id="tab-review" hidden>
   <div class="row" style="margin-bottom:.6rem">
     <div class="bar" style="flex:1;min-width:140px"><i id="rBar"></i></div>
     <span class="small muted" id="rCounts"></span>
@@ -215,7 +254,7 @@ async function api(path, opts = {}) {
 const state = {
   tab: 'books', books: [], current: null, detail: null, job: null, jobPollTimer: null,
   review: null, hideReviewed: false, focusId: null, selectingId: null,
-  trace: null, traceOutcome: '', traceFind: '', config: null,
+  trace: null, traceOutcome: '', traceFind: '', config: null, doctor: null,
 };
 try { state.current = localStorage.getItem('joven.current') || null; } catch {}
 
@@ -228,6 +267,7 @@ function showTab(name) {
   if (name === 'review') loadReview();
   if (name === 'trace') loadTrace();
   if (name === 'detect') refreshServers();
+  if (name === 'setup') loadDoctor();
 }
 $('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); });
 
@@ -240,7 +280,11 @@ function currentBook() { return state.books.find(b => b.sha === state.current) |
 function renderBookPill() {
   const b = currentBook();
   $('bookPill').textContent = b ? (b.title || b.filename) + (b.creator ? ' — ' + b.creator : '') : 'no book chosen';
-  document.querySelectorAll('nav button').forEach(btn => { if (btn.dataset.tab !== 'books') btn.disabled = !b; });
+  // Setup stays reachable with no book chosen: it is where someone lands when
+  // nothing works yet, which is exactly when there is no book.
+  document.querySelectorAll('nav button').forEach(btn => {
+    if (btn.dataset.tab !== 'books' && btn.dataset.tab !== 'setup') btn.disabled = !b;
+  });
 }
 
 // ------------------------------------------------------------------ books
@@ -363,15 +407,24 @@ async function pollJobs(force) {
     lastJobId = job.id;
     await loadBooks();
     if (job.kind === 'detect') { state.review = null; state.trace = null; if (state.tab === 'review') loadReview(); if (state.tab === 'trace') loadTrace(); }
+    // A finished pull changes the answer to "is the model there?", so re-ask.
+    if (job.kind === 'pull') await loadDoctor();
   }
 }
 function renderJob(job) {
   const pill = $('jobPill');
+  renderPullJob(job);
+  if (state.tab === 'setup') renderDoctor();
   if (!job) { pill.hidden = true; $('dProgress').hidden = true; $('dCancel').hidden = true; $('dStart').disabled = false; $('renderStart').disabled = false; return; }
   const running = job.state === 'running';
   pill.hidden = false; pill.className = 'job-pill ' + job.state;
   const p = job.progress;
-  pill.textContent = `${job.kind}: ${job.state}` + (running && p ? ` · ${p.paragraphs_done}/${p.paragraphs_total}` : '') + (!running ? ` · ${job.elapsed.toFixed(0)}s` : '');
+  // Paragraph counts belong to detect; a pull reports bytes, and reading one
+  // shape as the other is how the pill ends up saying undefined/undefined.
+  const detail = running && p && job.kind === 'detect'
+    ? ` · ${p.paragraphs_done}/${p.paragraphs_total}`
+    : (running && p && job.kind === 'pull' ? ` · ${p.status || ''}` : '');
+  pill.textContent = `${job.kind}: ${job.state}` + detail + (!running ? ` · ${job.elapsed.toFixed(0)}s` : '');
   $('dStart').disabled = running; $('renderStart').disabled = running;
   $('dCancel').hidden = !(running && job.kind === 'detect');
 
@@ -597,14 +650,105 @@ let findTimer = null;
 $('traceFind').addEventListener('input', e => { clearTimeout(findTimer); findTimer = setTimeout(() => { state.traceFind = e.target.value.trim(); loadTrace(); }, 300); });
 $('traceList').addEventListener('click', e => { const row = e.target.closest('.tr'); if (row) row.classList.toggle('open'); });
 
+// ------------------------------------------------------------------- setup
+// The readiness checks, and the one repair the page can perform itself. Every
+// judgement comes from /api/doctor -- the page decides nothing about severity, so
+// it cannot disagree with `joven doctor`.
+const DOT = {ok: '✓', warn: '!', fail: '✕'};
+
+async function loadDoctor() {
+  try {
+    state.doctor = await api('/api/doctor');
+  } catch (e) {
+    $('setupVerdict').className = 'verdict blocked';
+    $('setupVerdict').textContent = 'could not run the checks: ' + e.message;
+    return;
+  }
+  renderDoctor();
+}
+
+function renderDoctor() {
+  const d = state.doctor;
+  if (!d) return;
+  $('setupChecks').innerHTML = d.checks.map(c => `
+    <div class="chk ${esc(c.state)}">
+      <span class="dot" aria-hidden="true">${DOT[c.state] || '?'}</span>
+      <span class="who">${esc(c.name)}</span>
+      <span class="what">${esc(c.detail)}
+        ${c.hint ? `<span class="hint">${esc(c.hint)}</span>` : ''}</span>
+    </div>`).join('');
+
+  const blockers = d.checks.filter(c => c.blocking);
+  const warnings = d.checks.filter(c => c.state === 'warn');
+  const v = $('setupVerdict');
+  if (blockers.length) {
+    v.className = 'verdict blocked';
+    v.textContent = 'Not ready yet — ' + blockers.map(c => c.name).join(', ');
+  } else if (warnings.length) {
+    v.className = 'verdict ready';
+    v.textContent = `Ready. ${warnings.length} thing${warnings.length > 1 ? 's' : ''} you could still improve — see below.`;
+  } else {
+    v.className = 'verdict ready';
+    v.textContent = 'Ready — drop a book on the Books tab.';
+  }
+
+  // Offer only the remedy the checks actually asked for.
+  const pullable = d.checks.find(c => c.fix === 'pull-model');
+  const serverDown = d.checks.some(c => c.name === 'model server' && c.state === 'fail');
+  const job = state.job;
+  const pulling = job && job.kind === 'pull' && job.state === 'running';
+  $('setupPull').hidden = !pullable || serverDown || pulling;
+  $('setupPullCancel').hidden = !pulling;
+  $('setupOllama').hidden = !serverDown;
+}
+
+$('setupRecheck').addEventListener('click', loadDoctor);
+$('setupPullCancel').addEventListener('click', () => api('/api/jobs/cancel', {method: 'POST'}));
+$('setupPull').addEventListener('click', async () => {
+  $('setupPullError').textContent = '';
+  $('setupPull').disabled = true;
+  try {
+    await api('/api/pull', {method: 'POST', json: {}});
+    pollJobs(true);
+  } catch (e) {
+    $('setupPullError').textContent = e.message;
+  } finally {
+    $('setupPull').disabled = false;
+  }
+});
+
+function renderPullJob(job) {
+  const running = job && job.kind === 'pull' && job.state === 'running';
+  $('setupProgress').hidden = !job || job.kind !== 'pull';
+  if (!job || job.kind !== 'pull') return;
+  const p = job.progress || {};
+  // Ollama reports bytes per layer, so the total grows as layers start. Showing
+  // the layer's own percentage is honest; a whole-download bar would not be.
+  const pct = p.total ? 100 * p.completed / p.total : 0;
+  $('setupBar').style.width = pct + '%';
+  const gb = n => (n / 1e9).toFixed(2) + ' GB';
+  $('setupPullStatus').innerHTML = running
+    ? `<span>${esc(p.status || 'starting')}</span>
+       ${p.total ? `<span>${gb(p.completed)} / ${gb(p.total)} this layer</span>` : ''}
+       <span>${job.elapsed.toFixed(0)}s</span>`
+    : job.state === 'failed'
+      ? `<span class="bad">${esc(job.error)}</span>`
+      : `<span>${job.state === 'cancelled' ? 'download stopped — pulling again resumes' : 'model downloaded'}</span>`;
+}
+
 // -------------------------------------------------------------------- boot
 (async () => {
   await loadConfig();
   await loadBooks();
+  await loadDoctor();
   // #detect, #review, ... deep-link a tab; otherwise land where the work is.
   const wanted = location.hash.slice(1);
-  const known = ['books', 'detect', 'review', 'render', 'trace'];
-  if (known.includes(wanted) && (wanted === 'books' || currentBook())) showTab(wanted);
+  const known = ['setup', 'books', 'detect', 'review', 'render', 'trace'];
+  // Something required is missing: open on Setup rather than on a drop zone that
+  // cannot work. An explicit #hash still wins -- someone who asked for a tab gets it.
+  const blocked = state.doctor && !state.doctor.ready;
+  if (known.includes(wanted) && (wanted === 'setup' || wanted === 'books' || currentBook())) showTab(wanted);
+  else if (blocked) showTab('setup');
   else showTab(currentBook() ? (currentBook().annotations != null ? 'review' : 'detect') : 'books');
   window.addEventListener('hashchange', () => {
     const name = location.hash.slice(1);
