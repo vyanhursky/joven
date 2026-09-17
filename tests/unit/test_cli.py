@@ -330,3 +330,48 @@ def test_detect_with_workers_matches_a_single_worker(sample_epub: Path, tmp_path
     assert [a.to_dict() for a in Sidecar.load(one).annotations] == [
         a.to_dict() for a in Sidecar.load(four).annotations
     ]
+
+
+# --------------------------------------------------------- the packaged app's entry
+
+
+def test_a_frozen_build_with_no_arguments_runs_the_ui(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Double-clicking the downloaded app must not print command-line help.
+
+    ``no_args_is_help`` is right for the terminal and wrong for an icon, so
+    ``main`` injects ``ui`` when a frozen build is started with nothing.
+    """
+    import joven.cli as cli
+
+    monkeypatch.setattr(cli.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(cli.sys, "argv", ["Joven.exe"])
+    called = {}
+    monkeypatch.setattr(cli, "app", lambda: called.setdefault("argv", list(cli.sys.argv)))
+    cli.main()
+    assert called["argv"] == ["Joven.exe", "ui"]
+
+
+def test_a_frozen_build_still_takes_real_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`Joven.exe detect book.epub` is the same tool, not a second one."""
+    import joven.cli as cli
+
+    monkeypatch.setattr(cli.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(cli.sys, "argv", ["Joven.exe", "detect", "book.epub"])
+    called = {}
+    monkeypatch.setattr(cli, "app", lambda: called.setdefault("argv", list(cli.sys.argv)))
+    cli.main()
+    assert called["argv"] == ["Joven.exe", "detect", "book.epub"]
+
+
+def test_an_ordinary_install_with_no_arguments_still_shows_help(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`joven` in a terminal is asking what the commands are."""
+    import joven.cli as cli
+
+    monkeypatch.delattr(cli.sys, "frozen", raising=False)
+    monkeypatch.setattr(cli.sys, "argv", ["joven"])
+    called = {}
+    monkeypatch.setattr(cli, "app", lambda: called.setdefault("argv", list(cli.sys.argv)))
+    cli.main()
+    assert called["argv"] == ["joven"]

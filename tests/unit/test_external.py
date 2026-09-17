@@ -145,3 +145,87 @@ def test_the_cli_prints_utf8_to_a_redirected_stream() -> None:
     )
     # Decoded strictly on purpose: mojibake must fail this, not pass quietly.
     assert proc.stdout.decode("utf-8").strip() == "matríz — se fué"
+
+
+# ------------------------------------------------------------- the bundled copies
+
+
+def test_vendor_dir_is_none_without_a_frozen_build_or_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(external.VENDOR_ENV, raising=False)
+    monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+    assert external.vendor_dir() is None
+
+
+def test_the_apps_own_binary_wins_over_one_on_path(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bundled copy is the version this release was tested against.
+
+    Someone with an older kepubify from a package manager should not silently get
+    it in preference to the one the app shipped with.
+    """
+    vendor = tmp_path / "vendor"
+    vendor.mkdir()
+    name = "kepubify.exe" if sys.platform == "win32" else "kepubify"
+    bundled = vendor / name
+    bundled.write_bytes(b"")
+    monkeypatch.setenv(external.VENDOR_ENV, str(vendor))
+    monkeypatch.setattr(external.shutil, "which", lambda _n: "/somewhere/else/kepubify")
+    assert external.resolve("kepubify") == str(bundled)
+
+
+def test_a_vendor_hit_is_a_file_not_a_directory(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """epubcheck lives in the vendor dir as a *directory*, and must not shadow PATH.
+
+    ``resolve`` returning a directory would satisfy every availability check and
+    then fail at the point of invocation -- trap 1 in a new costume.
+    """
+    vendor = tmp_path / "vendor"
+    (vendor / "epubcheck").mkdir(parents=True)
+    monkeypatch.setenv(external.VENDOR_ENV, str(vendor))
+    monkeypatch.setattr(external.shutil, "which", lambda _n: None)
+    assert external.resolve("epubcheck") is None
+
+
+def test_the_bundled_jar_is_the_last_route_to_epubcheck(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No launcher, no configured jar -- the app's own copy still works."""
+    vendor = tmp_path / "vendor"
+    jar = vendor / "epubcheck" / "epubcheck.jar"
+    jar.parent.mkdir(parents=True)
+    jar.write_bytes(b"")
+    monkeypatch.setenv(external.VENDOR_ENV, str(vendor))
+    monkeypatch.setenv("JOVEN_CONFIG", str(tmp_path / "absent.toml"))
+    (tmp_path / "absent.toml").write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        external.shutil, "which", lambda n: "/usr/bin/java" if n == "java" else None
+    )
+    command = epubcheck_command()
+    assert command is not None
+    assert command[:2] == ["/usr/bin/java", "-jar"]
+    assert command[2] == str(jar)
+
+
+def test_a_configured_jar_outranks_the_bundled_one(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Someone who set the path meant it."""
+    vendor = tmp_path / "vendor"
+    (vendor / "epubcheck").mkdir(parents=True)
+    (vendor / "epubcheck" / "epubcheck.jar").write_bytes(b"")
+    theirs = tmp_path / "theirs.jar"
+    theirs.write_bytes(b"")
+    monkeypatch.setenv(external.VENDOR_ENV, str(vendor))
+    monkeypatch.setenv(JAR_ENV, str(theirs))
+    monkeypatch.setenv("JOVEN_CONFIG", str(tmp_path / "absent.toml"))
+    (tmp_path / "absent.toml").write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        external.shutil, "which", lambda n: "/usr/bin/java" if n == "java" else None
+    )
+    command = epubcheck_command()
+    assert command is not None and command[2] == str(theirs)

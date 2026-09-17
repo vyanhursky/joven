@@ -21,17 +21,50 @@ Windows is why this module exists. Two portability traps live in the gap between
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
+
+VENDOR_ENV = "JOVEN_VENDOR"
+
+
+def vendor_dir() -> Path | None:
+    """Where the packaged app keeps the tools it ships with, or None if it is not one.
+
+    The downloadable app exists so that a reader never installs anything by hand,
+    which means it has to carry ``kepubify`` itself. PyInstaller unpacks its data
+    under ``sys._MEIPASS`` in both onefile and onedir builds, so one lookup covers
+    both. ``JOVEN_VENDOR`` names a directory instead, which is how this is tested
+    without building an app.
+    """
+    if override := os.environ.get(VENDOR_ENV):
+        path = Path(override)
+        return path if path.is_dir() else None
+    root = getattr(sys, "_MEIPASS", None)
+    if root is None:
+        return None
+    path = Path(root) / "vendor"
+    return path if path.is_dir() else None
 
 
 def resolve(name: str) -> str | None:
-    """The full path to ``name`` on ``PATH``, or None if it is not installed.
+    """The full path to ``name``, or None if it is not installed.
+
+    The app's own copy wins over ``PATH``. That order is deliberate: the bundled
+    binary is the version this release was tested against, and a reader who also
+    has an older ``kepubify`` from somewhere else should not silently get it.
 
     This returns a path rather than a bool precisely so a caller cannot reintroduce
-    trap 1 by testing with this and then running the bare name.
+    trap 1 by testing with this and then running the bare name — and the bundled
+    branch keeps that promise, returning the file itself rather than a name that
+    happens to sit in a directory.
     """
+    if (vendor := vendor_dir()) is not None:
+        for candidate in (vendor / name, vendor / f"{name}.exe"):
+            if candidate.is_file():
+                return str(candidate)
     return shutil.which(name)
 
 

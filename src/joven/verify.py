@@ -334,9 +334,18 @@ def epubcheck_command() -> list[str] | None:
     if launcher:
         return [launcher]
     # The environment variable is one of the routes the config module reads, so a
-    # joven.toml `epubcheck_jar = ...` arrives here the same way.
+    # joven.toml `epubcheck_jar = ...` arrives here the same way. A path someone
+    # set explicitly outranks the app's own copy.
     if jar := load_config().settings.epubcheck_jar:
         return external.java_command(Path(jar))
+    # Third route: the packaged app ships the official distribution, so a reader
+    # who happens to have a JVM gets the real check instead of SKIPPED without
+    # setting anything. The whole directory ships, not just the jar -- the jar's
+    # manifest Class-Path points at lib/, and without it epubcheck does not start.
+    if (vendor := external.vendor_dir()) is not None:
+        bundled = vendor / "epubcheck" / "epubcheck.jar"
+        if bundled.is_file():
+            return external.java_command(bundled)
     return None
 
 

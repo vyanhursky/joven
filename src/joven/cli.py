@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import NoReturn
 
@@ -926,8 +927,16 @@ def main() -> None:
 
     The streams are pinned to UTF-8 before Typer can print a word of Spanish
     through a cp1252 one; see :func:`joven.console.force_utf8_output`.
+
+    One binary serves two audiences. Someone who double-clicks the downloaded app
+    passes no arguments and wants the browser workflow, but ``no_args_is_help``
+    would hand them a page of command-line help in a console they did not ask for
+    — so a frozen build with no arguments runs ``ui``. Typed arguments are left
+    alone, and ``Joven.exe detect book.epub`` works exactly as ``joven`` does.
     """
     force_utf8_output()
+    if getattr(sys, "frozen", False) and len(sys.argv) == 1:
+        sys.argv.append("ui")
     app()
 
 
