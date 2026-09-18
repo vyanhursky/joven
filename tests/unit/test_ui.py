@@ -187,7 +187,12 @@ def test_detect_runs_as_a_job_and_writes_the_sidecar(ui, sample_epub: Path) -> N
     client, sha = _with_book(ui, sample_epub)
     status, job = client.post(f"/api/books/{sha}/detect", {"backend": "stub"})
     assert status == 202, job
-    assert job["kind"] == "detect" and job["state"] == "running"
+    # Not `state == "running"`: the stub backend on a book this small can finish
+    # before the caller reads the response, which made this fail about one run in
+    # six on Linux. What the POST has to promise is that the job was accepted and
+    # identified -- whether it is still going by the time anyone looks is timing.
+    assert job["kind"] == "detect"
+    assert job["state"] in {"running", "done"}, job
 
     done = client.wait()
     assert done["state"] == "done", done

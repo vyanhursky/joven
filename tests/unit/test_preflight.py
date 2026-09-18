@@ -184,3 +184,16 @@ def test_as_dict_carries_everything_the_page_needs() -> None:
         "fix": "pull-model",
         "blocking": True,
     }
+
+
+def test_the_java_hint_names_a_command_that_exists_on_this_platform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Linux reader told to run `winget` is worse off than one told nothing."""
+    expected = {"win32": "winget", "darwin": "brew"}
+    for platform, command in (("win32", "winget"), ("darwin", "brew"), ("linux", "default-jre")):
+        monkeypatch.setattr(preflight.sys, "platform", platform)
+        hint = preflight._java_hint()
+        assert command in hint
+        for other in set(expected.values()) - {command}:
+            assert other not in hint

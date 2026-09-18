@@ -196,6 +196,20 @@ def _kepubify() -> Check:
     )
 
 
+def _java_hint() -> str:
+    """How to get a JVM, on the platform actually running.
+
+    Worth the branch: a hint is only useful if it names a command that exists
+    here, and telling a Linux reader to run ``winget`` is worse than saying
+    nothing.
+    """
+    if sys.platform == "win32":
+        return "epubcheck is a JAR and needs a JVM: winget install Microsoft.OpenJDK.21"
+    if sys.platform == "darwin":
+        return "epubcheck is a JAR and needs a JVM: brew install openjdk"
+    return "epubcheck is a JAR and needs a JVM: install your distribution's JRE (e.g. default-jre)"
+
+
 def _epubcheck() -> list[Check]:
     """Java and epubcheck, reported separately because the jar is useless alone."""
     java = external.resolve("java")
@@ -207,13 +221,7 @@ def _epubcheck() -> list[Check]:
         ]
     if java is None:
         return [
-            Check(
-                "java",
-                WARN,
-                "not found",
-                "epubcheck is a JAR and needs a JVM: winget install Microsoft.OpenJDK.21",
-                OPTIONAL,
-            ),
+            Check("java", WARN, "not found", _java_hint(), OPTIONAL),
             Check(
                 "epubcheck",
                 WARN,
