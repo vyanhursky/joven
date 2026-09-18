@@ -58,3 +58,11 @@ dist/
 # uv writes this when `uv run` is used in the project directory. The documented
 # dev flow is venv + pip, so a lock file here would only go stale.
 uv.lock
+packaging/vendor/
+packaging/build/
+packaging/dist/
+packaging/dmg/
+# The .icns is committed; the .iconset it was assembled from is scratch.
+packaging/icons/joven.iconset/
+build/
+dist/

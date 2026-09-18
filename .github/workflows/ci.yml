@@ -173,6 +173,100 @@ jobs:
       - name: Documented commands all exist
         run: python tools/check_docs.py --executable joven
 
+  app:
+    # The downloadable app, for readers who will never open a terminal. Built on
+    # every push and not only on tags, because the spec breaks silently: a build
+    # that omits lingua still starts, still serves the page, and dies at the first
+    # paragraph of the first detect. The smoke step below is what catches that.
+    #
+    # One runner per platform because PyInstaller does not cross-compile, and
+    # kepubify is fetched per host for the same reason.
+    needs: [test, guards]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: windows-latest, asset: Joven-windows-x64}
+          - {os: macos-latest, asset: Joven-macos-arm64}
+          - {os: ubuntu-latest, asset: Joven-linux-x64}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - run: pip install -e . pyinstaller
+
+      - name: Fetch the bundled binaries
+        run: python packaging/fetch_vendor.py
+
+      - name: Build
+        run: pyinstaller packaging/joven.spec --noconfirm --distpath packaging/dist --workpath packaging/build
+
+      # A build can succeed and still be unusable, so run the thing. `doctor`
+      # exercises the frozen entry point, the config, and -- the part the spec
+      # gets wrong when it gets anything wrong -- the bundled kepubify lookup.
+      # It exits 1 here because no runner has a model server, so check the
+      # output rather than the status.
+      - name: Smoke-test the built app (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          app="packaging/dist/Joven/Joven"
+          [ -d "packaging/dist/Joven.app" ] && app="packaging/dist/Joven.app/Contents/MacOS/Joven"
+          "$app" doctor > doctor.txt || true
+          cat doctor.txt
+          grep -q "model server" doctor.txt
+          grep -q "\[OK  \] kepubify" doctor.txt
+
+      - name: Smoke-test the built app (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          packaging/dist/Joven/Joven.exe doctor > doctor.txt || true
+          cat doctor.txt
+          grep -q "model server" doctor.txt
+          grep -q "\[OK  \] kepubify" doctor.txt
+
+      # onedir, so it has to be one file before anyone can download it. macOS
+      # gets a DMG because that is what a Mac user expects to double-click;
+      # everything else gets an archive that preserves the executable bit.
+      # The volume needs an /Applications alias beside the app, and not for
+      # decoration. An app launched from the DMG is on a read-only quarantined
+      # image, and macOS offers no "Open Anyway" for one of those -- the first-run
+      # warning has a single Done button and there is no way past it. Copying to
+      # /Applications first is what makes the override appear, so the window has
+      # to offer somewhere to drag to. Verified on macOS 26.5.2 against the DMG
+      # this job built.
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          staging=packaging/dmg
+          rm -rf "$staging" && mkdir -p "$staging"
+          cp -R packaging/dist/Joven.app "$staging/Joven.app"
+          ln -s /Applications "$staging/Applications"
+          hdiutil create -volname Joven -srcfolder "$staging" \
+            -ov -format UDZO "${{ matrix.asset }}.dmg"
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: tar -C packaging/dist -czf "${{ matrix.asset }}.tar.gz" Joven
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path packaging/dist/Joven -DestinationPath "${{ matrix.asset }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: |
+            ${{ matrix.asset }}.zip
+            ${{ matrix.asset }}.dmg
+            ${{ matrix.asset }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
   package:
     runs-on: ubuntu-latest
     steps:
@@ -244,7 +338,7 @@ jobs:
     # notes are the CHANGELOG section rather than a second copy of it. It runs
     # after publish so a release page never points at a version pip cannot find.
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [publish]
+    needs: [publish, app]
     runs-on: ubuntu-latest
     permissions:
       contents: write  # to create the release and attach the files
@@ -258,6 +352,15 @@ jobs:
           name: dist
           path: dist
 
+      # The three downloadable apps, each artifact holding one archive. They are
+      # what the README's download links point at, so a release without them is a
+      # release whose front door is broken.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Joven-*
+          path: apps
+          merge-multiple: true
+
       - name: Create the GitHub release from the CHANGELOG
         env:
           GH_TOKEN: ${{ github.token }}
@@ -268,5 +371,6 @@ jobs:
           case "$version" in
             *a*|*b*|*rc*) prerelease="--prerelease" ;;
           esac
-          gh release create "$GITHUB_REF_NAME" dist/* \
+          ls -lh apps/
+          gh release create "$GITHUB_REF_NAME" dist/* apps/* \
             --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md $prerelease

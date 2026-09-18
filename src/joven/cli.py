@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import NoReturn
 
@@ -10,6 +11,7 @@ from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, TextColumn, TimeRemainingColumn
 from rich.progress import Progress as RichProgress
 
+from . import preflight
 from .config import ConfigError, Resolved
 from .config import load as load_config
 from .console import force_utf8_output
@@ -21,6 +23,7 @@ from .epub.document import iter_text_units
 from .epub.package import read_package
 from .kepub import INSTALL_HINT, KepubError
 from .model import Annotation, Sidecar, Status, normalize, occurrence_indices
+from .preflight import run_checks
 from .render import RenderError, render_epub
 from .render.strip import count_markers, strip_annotations
 from .review import serve as serve_review
@@ -868,6 +871,41 @@ def diff(
 
 
 @app.command()
+def doctor() -> None:
+    """Check that everything Joven needs is installed and running.
+
+    Exits 1 only when something *required* is missing — a model server, or the
+    model itself. A warning means the workflow still completes with a narrower
+    result, and says which.
+    """
+    checks = run_checks()
+    typer.echo()
+    for check in checks:
+        colour = {
+            preflight.OK: typer.colors.GREEN,
+            preflight.WARN: typer.colors.YELLOW,
+            preflight.FAIL: typer.colors.RED,
+        }[check.state]
+        typer.secho(str(check), fg=colour)
+    typer.echo()
+
+    stopped = preflight.blocking(checks)
+    if stopped:
+        names = ", ".join(c.name for c in stopped)
+        typer.secho(f"not ready to annotate a book — fix: {names}", fg=typer.colors.RED, bold=True)
+        raise typer.Exit(1)
+    warned = [c for c in checks if c.state == preflight.WARN]
+    if warned:
+        typer.secho(
+            f"ready, with {len(warned)} warning(s) — see above for what each one costs",
+            fg=typer.colors.YELLOW,
+            bold=True,
+        )
+        return
+    typer.secho("ready", fg=typer.colors.GREEN, bold=True)
+
+
+@app.command()
 def config() -> None:
     """Show the effective configuration and where each value comes from."""
     resolved = _settings()
@@ -889,8 +927,16 @@ def main() -> None:
 
     The streams are pinned to UTF-8 before Typer can print a word of Spanish
     through a cp1252 one; see :func:`joven.console.force_utf8_output`.
+
+    One binary serves two audiences. Someone who double-clicks the downloaded app
+    passes no arguments and wants the browser workflow, but ``no_args_is_help``
+    would hand them a page of command-line help in a console they did not ask for
+    — so a frozen build with no arguments runs ``ui``. Typed arguments are left
+    alone, and ``Joven.exe detect book.epub`` works exactly as ``joven`` does.
     """
     force_utf8_output()
+    if getattr(sys, "frozen", False) and len(sys.argv) == 1:
+        sys.argv.append("ui")
     app()
 
 

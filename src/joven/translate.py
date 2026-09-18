@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Protocol
@@ -563,6 +564,47 @@ def installed_models(base_url: str = DEFAULT_OLLAMA_URL) -> list[str]:
     except Exception:  # noqa: BLE001
         return []
     return [m["name"] for m in response.json().get("models", [])]
+
+
+def pull_model(
+    model: str,
+    base_url: str = DEFAULT_OLLAMA_URL,
+    *,
+    should_stop: Callable[[], bool] | None = None,
+) -> Iterator[dict[str, object]]:
+    """Stream ``ollama pull``, yielding one progress dict per server update.
+
+    This is the one remedy the app can offer for a missing model, so it reports
+    like a download and not like a spinner: Ollama's ``/api/pull`` sends NDJSON
+    with ``completed``/``total`` bytes per layer, and each line is yielded as
+    ``{"status", "completed", "total"}``.
+
+    Six GB over a slow connection is long enough that abandoning it has to work,
+    so ``should_stop`` is checked between lines and closes the response rather
+    than reading to the end. A partial pull is not wasted: Ollama keeps the blobs
+    it already has, and pulling again resumes.
+    """
+    payload = {"model": model, "stream": True}
+    with httpx.stream(
+        "POST", f"{base_url}/api/pull", json=payload, timeout=httpx.Timeout(10.0, read=None)
+    ) as response:
+        response.raise_for_status()
+        for line in response.iter_lines():
+            if should_stop is not None and should_stop():
+                return
+            if not line.strip():
+                continue
+            try:
+                update = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if error := update.get("error"):
+                raise RuntimeError(str(error))
+            yield {
+                "status": update.get("status", ""),
+                "completed": update.get("completed", 0),
+                "total": update.get("total", 0),
+            }
 
 
 def openai_available(base_url: str, api_key: str = "") -> bool:

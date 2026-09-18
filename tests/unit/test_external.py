@@ -84,6 +84,44 @@ def test_java_command_points_at_the_jar() -> None:
     assert command[2].endswith("epubcheck.jar")
 
 
+def _stub_java(monkeypatch, returncode: int) -> None:
+    """A ``java`` that resolves, and starts or does not."""
+    monkeypatch.setattr(external, "resolve", lambda name: "/usr/bin/java")
+    monkeypatch.setattr(
+        external,
+        "run",
+        lambda argv: subprocess.CompletedProcess(
+            argv, returncode, "", "Unable to locate a Java Runtime" if returncode else ""
+        ),
+    )
+
+
+def test_a_java_that_will_not_start_is_not_a_java(monkeypatch, tmp_path) -> None:
+    """Trap 1, in its macOS form — and the one this cost a real release.
+
+    Every macOS install carries ``/usr/bin/java`` whether a JDK was ever installed
+    or not. It is executable, so ``which`` finds it, and it exits 1 with "Unable to
+    locate a Java Runtime". Trusting the lookup made ``doctor`` report ``java`` and
+    ``epubcheck`` OK on a stock Mac and the render then end in ``1 of 12 checks
+    FAILED`` — availability saying yes and the invocation dying, which is the exact
+    bug the rest of this module exists to prevent.
+    """
+    _stub_java(monkeypatch, returncode=1)
+
+    assert external.java_runtime() is None
+    assert external.java_command(tmp_path / "epubcheck.jar") is None
+
+
+def test_a_java_that_starts_is_accepted(monkeypatch, tmp_path) -> None:
+    """The other half: probing must not reject a JVM that works."""
+    _stub_java(monkeypatch, returncode=0)
+
+    assert external.java_runtime() == "/usr/bin/java"
+    command = external.java_command(tmp_path / "epubcheck.jar")
+    assert command is not None
+    assert command[:2] == ["/usr/bin/java", "-jar"]
+
+
 class TestEpubcheckDiscovery:
     """The official epubcheck download is a jar and no launcher at all.
 
@@ -98,6 +136,11 @@ class TestEpubcheckDiscovery:
         jar.write_bytes(b"")
         monkeypatch.setattr(
             external, "resolve", lambda name: None if name == "epubcheck" else "java"
+        )
+        # The probe runs on this route, so the JVM has to answer for the test to be
+        # about the environment variable rather than about the host's JDK.
+        monkeypatch.setattr(
+            external, "run", lambda argv: subprocess.CompletedProcess(argv, 0, "", "")
         )
         monkeypatch.setenv(JAR_ENV, str(jar))
 
@@ -145,3 +188,102 @@ def test_the_cli_prints_utf8_to_a_redirected_stream() -> None:
     )
     # Decoded strictly on purpose: mojibake must fail this, not pass quietly.
     assert proc.stdout.decode("utf-8").strip() == "matríz — se fué"
+
+
+# ------------------------------------------------------------- the bundled copies
+
+
+def test_vendor_dir_is_none_without_a_frozen_build_or_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(external.VENDOR_ENV, raising=False)
+    monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+    assert external.vendor_dir() is None
+
+
+def test_the_apps_own_binary_wins_over_one_on_path(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bundled copy is the version this release was tested against.
+
+    Someone with an older kepubify from a package manager should not silently get
+    it in preference to the one the app shipped with.
+    """
+    vendor = tmp_path / "vendor"
+    vendor.mkdir()
+    name = "kepubify.exe" if sys.platform == "win32" else "kepubify"
+    bundled = vendor / name
+    bundled.write_bytes(b"")
+    monkeypatch.setenv(external.VENDOR_ENV, str(vendor))
+    monkeypatch.setattr(external.shutil, "which", lambda _n: "/somewhere/else/kepubify")
+    assert external.resolve("kepubify") == str(bundled)
+
+
+def test_a_vendor_hit_is_a_file_not_a_directory(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """epubcheck lives in the vendor dir as a *directory*, and must not shadow PATH.
+
+    ``resolve`` returning a directory would satisfy every availability check and
+    then fail at the point of invocation -- trap 1 in a new costume.
+    """
+    vendor = tmp_path / "vendor"
+    (vendor / "epubcheck").mkdir(parents=True)
+    monkeypatch.setenv(external.VENDOR_ENV, str(vendor))
+    monkeypatch.setattr(external.shutil, "which", lambda _n: None)
+    assert external.resolve("epubcheck") is None
+
+
+def test_the_bundled_jar_is_the_last_route_to_epubcheck(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No launcher, no configured jar -- the app's own copy still works."""
+    vendor = tmp_path / "vendor"
+    jar = vendor / "epubcheck" / "epubcheck.jar"
+    jar.parent.mkdir(parents=True)
+    jar.write_bytes(b"")
+    monkeypatch.setenv(external.VENDOR_ENV, str(vendor))
+    monkeypatch.setenv("JOVEN_CONFIG", str(tmp_path / "absent.toml"))
+    (tmp_path / "absent.toml").write_text("", encoding="utf-8")
+    # "No configured jar" has to be arranged, not assumed: JOVEN_EPUBCHECK_JAR
+    # outranks the bundled copy on purpose, and CI's Windows job exports it. An
+    # empty JOVEN_CONFIG does not neutralise it, because the variable beats the
+    # file. Without this the test passes or fails according to whose machine it
+    # is running on.
+    monkeypatch.delenv(JAR_ENV, raising=False)
+    monkeypatch.setattr(
+        external.shutil, "which", lambda n: "/usr/bin/java" if n == "java" else None
+    )
+    # These assert which jar wins, not whether this host has a JDK, so the probe
+    # gets an answer rather than the host's /usr/bin/java -- which on a Mac is a
+    # stub that refuses to start and on Windows is not a path at all.
+    monkeypatch.setattr(
+        external, "run", lambda argv: subprocess.CompletedProcess(argv, 0, "", "")
+    )
+    command = epubcheck_command()
+    assert command is not None
+    assert command[:2] == ["/usr/bin/java", "-jar"]
+    assert command[2] == str(jar)
+
+
+def test_a_configured_jar_outranks_the_bundled_one(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Someone who set the path meant it."""
+    vendor = tmp_path / "vendor"
+    (vendor / "epubcheck").mkdir(parents=True)
+    (vendor / "epubcheck" / "epubcheck.jar").write_bytes(b"")
+    theirs = tmp_path / "theirs.jar"
+    theirs.write_bytes(b"")
+    monkeypatch.setenv(external.VENDOR_ENV, str(vendor))
+    monkeypatch.setenv(JAR_ENV, str(theirs))
+    monkeypatch.setenv("JOVEN_CONFIG", str(tmp_path / "absent.toml"))
+    (tmp_path / "absent.toml").write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        external.shutil, "which", lambda n: "/usr/bin/java" if n == "java" else None
+    )
+    monkeypatch.setattr(
+        external, "run", lambda argv: subprocess.CompletedProcess(argv, 0, "", "")
+    )
+    command = epubcheck_command()
+    assert command is not None and command[2] == str(theirs)

@@ -32,10 +32,11 @@ from ..config import ConfigError, Settings
 from ..config import load as load_config
 from ..epub.archive import EpubError
 from ..model import Sidecar
+from ..preflight import run_checks
 from ..review import ReviewState, _payload, build_context
 from ..trace import Decision, load_trace
 from ..translate import installed_models, ollama_available, openai_available, openai_models
-from .jobs import Busy, Job, JobRunner, detect_job, render_job
+from .jobs import Busy, Job, JobRunner, detect_job, pull_job, render_job
 from .workspace import Book, Workspace
 
 TOKEN_HEADER = "X-Joven-Token"
@@ -136,6 +137,7 @@ _BOOK = r"(?P<sha>[0-9a-f]{64})"
 ROUTES_GET = [
     (re.compile(r"^/$"), "page"),
     (re.compile(r"^/api/status$"), "status"),
+    (re.compile(r"^/api/doctor$"), "doctor"),
     (re.compile(r"^/api/config$"), "config"),
     (re.compile(r"^/api/books$"), "books"),
     (re.compile(rf"^/api/books/{_BOOK}$"), "book"),
@@ -150,6 +152,7 @@ ROUTES_POST = [
     (re.compile(rf"^/api/books/{_BOOK}/render$"), "render"),
     (re.compile(rf"^/api/books/{_BOOK}/annotations/(?P<annotation>[0-9a-f]{{12}})$"), "annotate"),
     (re.compile(r"^/api/jobs/cancel$"), "cancel"),
+    (re.compile(r"^/api/pull$"), "pull"),
 ]
 
 
@@ -253,6 +256,21 @@ class _Handler(BaseHTTPRequestHandler):
                     "up": openai,
                     "models": openai_models(settings.base_url, settings.api_key) if openai else [],
                 },
+            },
+        )
+
+    def get_doctor(self, query: dict) -> None:
+        """The readiness checks, for the Setup tab.
+
+        ``check_port=False``: this server *is* what is listening on the port, so
+        asking would always answer "in use" and alarm the reader for no reason.
+        """
+        checks = run_checks(check_port=False)
+        self._json(
+            200,
+            {
+                "checks": [c.as_dict() for c in checks],
+                "ready": not any(c.blocking for c in checks),
             },
         )
 
@@ -396,6 +414,22 @@ class _Handler(BaseHTTPRequestHandler):
 
     def post_cancel(self, raw: bytes) -> None:
         self._json(200, {"cancelled": self.state.runner.cancel()})
+
+    def post_pull(self, raw: bytes) -> None:
+        """Download the configured model. The Setup tab's one repair button.
+
+        Through the runner like any other job, so it cannot run beside a detect
+        that is waiting on the same server. Ollama only — an OpenAI-compatible
+        server has no pull protocol, and saying so beats a silent no-op.
+        """
+        settings = self.state.settings()
+        if settings.backend != "ollama":
+            self._error(400, f"pulling a model needs the ollama backend, not {settings.backend!r}")
+            return
+        body = json.loads(raw or b"{}")
+        model = str(body.get("model") or settings.model)
+        job = self.state.runner.start("pull", "", pull_job(model, settings.ollama_url))
+        self._json(202, job.snapshot())
 
 
 def serve(

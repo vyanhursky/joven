@@ -77,12 +77,48 @@ PyPI will not let you re-upload a version, even a deleted one. Catching the
 mismatch before upload costs a few seconds; catching it afterwards costs a version
 number.
 
+## The downloadable app
+
+The `app` job builds it on three runners — PyInstaller does not cross-compile —
+and the `release` job attaches the three archives beside the wheel. Nothing here
+needs doing by hand at release time; what follows is for changing how it is built.
+
+```bash
+python packaging/fetch_vendor.py     # kepubify, and epubcheck unless --no-epubcheck
+pyinstaller packaging/joven.spec --noconfirm --distpath packaging/dist --workpath packaging/build
+```
+
+`packaging/vendor/` is gitignored and fetched fresh by every build, so bumping
+`KEPUBIFY_VERSION` or `EPUBCHECK_VERSION` in `fetch_vendor.py` is the whole of a
+dependency bump. Both licences permit redistribution with attribution, which
+`packaging/NOTICE` provides and the build ships.
+
+**onedir, not onefile**, and the reason is measured rather than assumed. Windows,
+2026-09-17: 357 MB on disk, 220 MB zipped, ~260 ms to start; Ubuntu 24.04: 375 MB
+and ~210 ms. onefile would unpack all of that to a temp directory on *every*
+launch. The bulk is `lingua` — a single ~291 MB extension module with the language
+models compiled in, which is also why the size cannot be reduced by supporting
+fewer languages.
+
+The builds are **unsigned**. Windows SmartScreen and macOS Gatekeeper both warn on
+first run, and [docs/install-app.md](install-app.md) walks a reader through it.
+Signing would cost about $99/yr for Apple plus a Windows certificate; it can be
+added later without changing anything here except the CI job.
+
+A build that omits `lingua` still starts and still serves the page, then dies at
+the first paragraph of the first detect — so the `app` job runs the built binary
+before packaging it. The check is on `doctor`'s *output*, not its exit code: no
+runner has a model server, so it exits 1 by design.
+
 ## Checking it worked
 
 ```bash
 uv tool install joven-ebook-annotator
 joven --help
+joven doctor
 ```
+
+And, from the release page, download one app archive, extract it, and run it once.
 
 A published version can be *yanked* (hidden from new installs) but never replaced.
 If a release is wrong, yank it and ship the next patch version.

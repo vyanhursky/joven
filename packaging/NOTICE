@@ -1,0 +1,67 @@
+Joven — third-party software bundled with the downloadable app
+==============================================================
+
+Joven itself is MIT-licensed; see LICENSE in the repository root.
+
+The packaged app (Joven.exe / Joven.app / the Linux build) ships two external
+tools so that a reader does not have to install them by hand. Both are
+redistributed under permissive licences that require attribution, which is what
+this file provides. Neither is modified in any way — each is the official release
+artefact, downloaded at build time by packaging/fetch_vendor.py.
+
+Installing Joven from PyPI (`pip install joven-ebook-annotator`) bundles neither;
+this file applies only to the packaged app.
+
+
+-------------------------------------------------------------------------------
+kepubify — https://github.com/pgaskin/kepubify
+Converts the finished EPUB into Kobo's KEPUB flavour.
+Bundled at: vendor/kepubify (vendor/kepubify.exe on Windows)
+-------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2017-2022 Patrick Gaskin
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+-------------------------------------------------------------------------------
+epubcheck — https://github.com/w3c/epubcheck
+The reference EPUB validator, run as the external gate on Joven's output.
+Bundled at: vendor/epubcheck/
+Licence: BSD 3-Clause
+-------------------------------------------------------------------------------
+
+epubcheck is redistributed as its official distribution directory, unmodified.
+That directory carries its own licence files, and they ship with it rather than
+being copied here, because epubcheck itself bundles thirty-seven third-party
+libraries whose terms are recorded alongside:
+
+    vendor/epubcheck/LICENSE.txt       the BSD 3-Clause licence and copyrights
+    vendor/epubcheck/THIRD-PARTY.txt   the libraries epubcheck bundles
+    vendor/epubcheck/licenses/         their licence texts
+
+Copyright © 2007 Adobe Systems Incorporated
+Copyright © 2008 IDPF
+Copyright © 2017 W3C (MIT, ERCIM, Keio, Beihang)
+
+epubcheck needs a Java runtime, which the app does not bundle. Where there is no
+JVM, Joven reports the epubcheck check as SKIPPED and the other eleven integrity
+checks still run.

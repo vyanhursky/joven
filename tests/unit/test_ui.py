@@ -187,7 +187,12 @@ def test_detect_runs_as_a_job_and_writes_the_sidecar(ui, sample_epub: Path) -> N
     client, sha = _with_book(ui, sample_epub)
     status, job = client.post(f"/api/books/{sha}/detect", {"backend": "stub"})
     assert status == 202, job
-    assert job["kind"] == "detect" and job["state"] == "running"
+    # Not `state == "running"`: the stub backend on a book this small can finish
+    # before the caller reads the response, which made this fail about one run in
+    # six on Linux. What the POST has to promise is that the job was accepted and
+    # identified -- whether it is still going by the time anyone looks is timing.
+    assert job["kind"] == "detect"
+    assert job["state"] in {"running", "done"}, job
 
     done = client.wait()
     assert done["state"] == "done", done
@@ -402,3 +407,66 @@ def test_status_and_config_endpoints(ui) -> None:
     assert status == 200
     assert set(servers) == {"ollama", "openai"}
     assert isinstance(servers["ollama"]["up"], bool)
+
+
+# ------------------------------------------------------------------- setup tab
+
+
+def test_doctor_endpoint_reports_every_check_with_its_severity(ui) -> None:
+    client = _client(ui)
+    status, payload = client.get("/api/doctor")
+    assert status == 200
+    assert isinstance(payload["ready"], bool)
+    names = {c["name"] for c in payload["checks"]}
+    assert {"model server", "kepubify", "epubcheck", "books directory"} <= names
+    for check in payload["checks"]:
+        assert check["state"] in {"ok", "warn", "fail"}
+        assert check["severity"] in {"required", "recommended", "optional"}
+        assert isinstance(check["blocking"], bool)
+
+
+def test_doctor_does_not_report_its_own_port_as_taken(ui) -> None:
+    """The server asking whether its own port is free would always alarm.
+
+    ``get_doctor`` passes ``check_port=False`` for exactly this reason; if that
+    ever regresses, the page grows a warning nobody can act on.
+    """
+    _, payload = _client(ui).get("/api/doctor")
+    assert not any(c["name"] == "port" for c in payload["checks"])
+
+
+def test_pull_refuses_a_backend_that_cannot_pull(ui) -> None:
+    """The fixture runs the stub backend, which has no pull protocol."""
+    status, payload = _client(ui).post("/api/pull", {})
+    assert status == 400
+    assert "ollama" in payload["error"]
+
+
+def test_pull_needs_the_session_token(ui) -> None:
+    httpd, _ = ui
+    status, payload = Client(httpd, None).post("/api/pull", {})
+    assert status == 403
+
+
+def test_pull_competes_with_other_jobs_for_the_one_slot(ui, tmp_path, monkeypatch) -> None:
+    """One job at a time is the whole point: a pull must not start beside a detect.
+
+    Asserted through the runner rather than over HTTP, because starting a real
+    pull would reach for a model server the tests do not have.
+    """
+    from joven.ui.jobs import Busy, pull_job
+
+    _, state = ui
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow(job):
+        started.set()
+        release.wait(timeout=5)
+        return {}
+
+    state.runner.start("detect", "", slow)
+    assert started.wait(timeout=5)
+    with pytest.raises(Busy):
+        state.runner.start("pull", "", pull_job("qwen3:8b", "http://localhost:1"))
+    release.set()

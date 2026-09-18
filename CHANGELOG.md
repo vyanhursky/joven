@@ -3,6 +3,52 @@
 Release notes. The GitHub release for each tag takes its text from the matching
 section here, so every version has one.
 
+## Unreleased
+
+### Added
+
+- **A downloadable app** — `Joven-windows-x64.zip`, `Joven-macos-arm64.dmg`,
+  `Joven-linux-x64.tar.gz` on each release. Double-clicking it opens the browser
+  workflow: no Python, no `PATH`, no terminal. It carries `kepubify` and
+  `epubcheck` itself, so the only thing left to install is Ollama and its model.
+  About 220 MB to download, ~260 ms to start. Unsigned, so Windows and macOS warn
+  on first run — [docs/install-app.md](docs/install-app.md) walks through it.
+- **`joven doctor`** — checks the model server, the model, `kepubify`, Java and
+  `epubcheck`, and reports what each missing piece costs rather than only that it
+  is missing. Exits non-zero only when something stops a book being annotated.
+- **An icon** on the Windows and macOS builds, drawn from the README's horse by
+  `packaging/make_icon.py` so there is only ever one copy of the art. Small sizes
+  get the strokes thickened first, because the horse is line work and shrinks to a
+  smudge otherwise. Linux keeps none: a tarball has nowhere to put one, so the PNG
+  ships in the bundle for whoever writes a `.desktop` file.
+- **A Setup tab** in the browser UI, showing the same checks, and the page now
+  opens on it when something required is missing instead of on a drop zone that
+  cannot work. Where the model was never pulled it offers a **Pull model** button;
+  cancelling is safe, because Ollama keeps what it has and resumes.
+
+### Fixed
+
+- **`doctor` reported Java and `epubcheck` as working on any Mac without a JDK.**
+  macOS ships a `/usr/bin/java` stub on every install: it resolves like a real
+  JVM and exits 1 with "Unable to locate a Java Runtime". So `doctor` said
+  `ready`, promised twelve integrity checks, and the render ended in `1 of 12
+  checks FAILED` — the stub's message quoted at a reader who was told they did
+  not need Java. Joven now starts the JVM before believing in it, and a Mac with
+  no JDK gets the documented `java — not found` and eleven checks that pass.
+- **The macOS disk image had nothing to drag the app to.** An app launched from
+  the read-only image cannot be approved — the first-run warning has a single
+  **Done** button and no way past it — so the window now carries an
+  `Applications` alias, and [docs/install-app.md](docs/install-app.md) says to
+  use it and gives the System Settings approval steps that current macOS
+  actually requires.
+- The missing-Java hint named `winget` on every platform, including Linux and
+  macOS.
+- `setx JOVEN_EPUBCHECK_JAR` does not affect the terminal it is typed in; the
+  README now says so, and documents PowerShell's `Activate.ps1` — the
+  extensionless `activate` beside it is the bash script and silently does nothing.
+- A UI test asserted that a detect job was still running when its POST returned,
+  which the stub backend could beat about one run in six on Linux.
+
 ## v1.0.0b5 — 2026-09-06
 
 ### Added
