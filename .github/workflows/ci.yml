@@ -231,10 +231,21 @@ jobs:
       # onedir, so it has to be one file before anyone can download it. macOS
       # gets a DMG because that is what a Mac user expects to double-click;
       # everything else gets an archive that preserves the executable bit.
+      # The volume needs an /Applications alias beside the app, and not for
+      # decoration. An app launched from the DMG is on a read-only quarantined
+      # image, and macOS offers no "Open Anyway" for one of those -- the first-run
+      # warning has a single Done button and there is no way past it. Copying to
+      # /Applications first is what makes the override appear, so the window has
+      # to offer somewhere to drag to. Verified on macOS 26.5.2 against the DMG
+      # this job built.
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: |
-          hdiutil create -volname Joven -srcfolder packaging/dist/Joven.app \
+          staging=packaging/dmg
+          rm -rf "$staging" && mkdir -p "$staging"
+          cp -R packaging/dist/Joven.app "$staging/Joven.app"
+          ln -s /Applications "$staging/Applications"
+          hdiutil create -volname Joven -srcfolder "$staging" \
             -ov -format UDZO "${{ matrix.asset }}.dmg"
 
       - name: Package (Linux)

@@ -23,6 +23,19 @@ section here, so every version has one.
 
 ### Fixed
 
+- **`doctor` reported Java and `epubcheck` as working on any Mac without a JDK.**
+  macOS ships a `/usr/bin/java` stub on every install: it resolves like a real
+  JVM and exits 1 with "Unable to locate a Java Runtime". So `doctor` said
+  `ready`, promised twelve integrity checks, and the render ended in `1 of 12
+  checks FAILED` — the stub's message quoted at a reader who was told they did
+  not need Java. Joven now starts the JVM before believing in it, and a Mac with
+  no JDK gets the documented `java — not found` and eleven checks that pass.
+- **The macOS disk image had nothing to drag the app to.** An app launched from
+  the read-only image cannot be approved — the first-run warning has a single
+  **Done** button and no way past it — so the window now carries an
+  `Applications` alias, and [docs/install-app.md](docs/install-app.md) says to
+  use it and gives the System Settings approval steps that current macOS
+  actually requires.
 - The missing-Java hint named `winget` on every platform, including Linux and
   macOS.
 - `setx JOVEN_EPUBCHECK_JAR` does not affect the terminal it is typed in; the

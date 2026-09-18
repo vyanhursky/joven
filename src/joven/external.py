@@ -80,7 +80,37 @@ def run(argv: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def java_command(jar: Path) -> list[str] | None:
-    """The argv that runs ``jar``, or None if there is no JVM on ``PATH``."""
+def java_runtime() -> str | None:
+    """The path to a JVM that actually starts, or None.
+
+    Trap 1 again, in the one place resolving is genuinely not enough. Every macOS
+    install carries ``/usr/bin/java`` whether or not a JDK was ever installed: a
+    stub whose entire job is to say "Unable to locate a Java Runtime" and exit 1.
+    It is a real executable, so ``shutil.which`` finds it and ``resolve`` hands it
+    back — and then ``doctor`` reported ``java`` and ``epubcheck`` OK on a stock
+    Mac, promised twelve integrity checks, and the render ended in ``1 of 12
+    checks FAILED`` with the stub's message quoted back at a reader who never
+    installed Java and was told they did not need to.
+
+    That is the same shape as the ``.CMD`` bug above — availability said yes and
+    the invocation died — so it gets the same answer: ask the tool, do not ask
+    ``PATH`` about the tool. One JVM start, and only on the jar route; a launcher
+    on ``PATH`` never reaches here. Deliberately uncached, because the Setup tab's
+    *Check again* has to see a JDK that was installed a minute ago.
+    """
     java = resolve("java")
+    if java is None:
+        return None
+    try:
+        started = run([java, "-version"]).returncode == 0
+    except OSError:
+        # A resolved path that will not spawn is trap 1 exactly, and the answer is
+        # the same as a stub that starts and refuses: there is no JVM here.
+        return None
+    return java if started else None
+
+
+def java_command(jar: Path) -> list[str] | None:
+    """The argv that runs ``jar``, or None if there is no JVM that starts."""
+    java = java_runtime()
     return [java, "-jar", str(jar)] if java else None

@@ -28,7 +28,9 @@ decides which sentences are Spanish.
 **Windows:** right-click the `.zip` → *Extract All*. Keep the whole `Joven`
 folder together; `Joven.exe` needs the files beside it.
 
-**Mac:** open the `.dmg` and drag `Joven` to Applications.
+**Mac:** open the `.dmg` and drag `Joven` into the `Applications` folder shown
+beside it. Do not double-click Joven inside the disk image — an app run from
+there cannot be approved, and the warning below will have no way past it.
 
 **Linux:** `tar -xzf Joven-linux-x64.tar.gz`, then run `Joven/Joven`.
 
@@ -42,15 +44,21 @@ only do it once.
 info**, then **Run anyway**. If you would rather check first, right-click the zip
 → *Properties* → tick **Unblock** before extracting.
 
-**Mac.** Double-clicking gives *"Joven cannot be opened because it is from an
-unidentified developer"*. Instead, **right-click** (or Control-click) the app and
-choose **Open** — the same warning appears but now with an **Open** button. macOS
-remembers, and normal double-clicking works from then on.
+**Mac.** Make sure you have dragged Joven to **Applications** first — this does not
+work from inside the disk image. Then:
 
-> If right-click → Open does not offer you an Open button, your Mac is on a newer
-> macOS that has tightened this. Go to **System Settings → Privacy & Security**,
-> scroll to the bottom, and there will be a line about Joven being blocked with an
-> **Open Anyway** button.
+1. Double-click **Joven** in Applications. macOS says *"Joven" Not Opened* — *Apple
+   could not verify "Joven" is free of malware*. Click **Done**. This refusal is
+   the expected first step, not a failure.
+2. Open **System Settings → Privacy & Security** and scroll to the bottom. There is
+   now a line saying Joven was blocked, with an **Open Anyway** button. Press it and
+   authenticate.
+3. Double-click Joven again. It opens, and it keeps opening from then on.
+
+> On older versions of macOS there is a shorter route: **right-click** (or
+> Control-click) the app and choose **Open**, which offers an **Open** button in the
+> warning. Recent macOS removed it — if right-click → Open gives you no Open button,
+> use the three steps above.
 
 ## 3. Start Joven
 

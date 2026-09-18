@@ -84,6 +84,44 @@ def test_java_command_points_at_the_jar() -> None:
     assert command[2].endswith("epubcheck.jar")
 
 
+def _stub_java(monkeypatch, returncode: int) -> None:
+    """A ``java`` that resolves, and starts or does not."""
+    monkeypatch.setattr(external, "resolve", lambda name: "/usr/bin/java")
+    monkeypatch.setattr(
+        external,
+        "run",
+        lambda argv: subprocess.CompletedProcess(
+            argv, returncode, "", "Unable to locate a Java Runtime" if returncode else ""
+        ),
+    )
+
+
+def test_a_java_that_will_not_start_is_not_a_java(monkeypatch, tmp_path) -> None:
+    """Trap 1, in its macOS form — and the one this cost a real release.
+
+    Every macOS install carries ``/usr/bin/java`` whether a JDK was ever installed
+    or not. It is executable, so ``which`` finds it, and it exits 1 with "Unable to
+    locate a Java Runtime". Trusting the lookup made ``doctor`` report ``java`` and
+    ``epubcheck`` OK on a stock Mac and the render then end in ``1 of 12 checks
+    FAILED`` — availability saying yes and the invocation dying, which is the exact
+    bug the rest of this module exists to prevent.
+    """
+    _stub_java(monkeypatch, returncode=1)
+
+    assert external.java_runtime() is None
+    assert external.java_command(tmp_path / "epubcheck.jar") is None
+
+
+def test_a_java_that_starts_is_accepted(monkeypatch, tmp_path) -> None:
+    """The other half: probing must not reject a JVM that works."""
+    _stub_java(monkeypatch, returncode=0)
+
+    assert external.java_runtime() == "/usr/bin/java"
+    command = external.java_command(tmp_path / "epubcheck.jar")
+    assert command is not None
+    assert command[:2] == ["/usr/bin/java", "-jar"]
+
+
 class TestEpubcheckDiscovery:
     """The official epubcheck download is a jar and no launcher at all.
 
@@ -98,6 +136,11 @@ class TestEpubcheckDiscovery:
         jar.write_bytes(b"")
         monkeypatch.setattr(
             external, "resolve", lambda name: None if name == "epubcheck" else "java"
+        )
+        # The probe runs on this route, so the JVM has to answer for the test to be
+        # about the environment variable rather than about the host's JDK.
+        monkeypatch.setattr(
+            external, "run", lambda argv: subprocess.CompletedProcess(argv, 0, "", "")
         )
         monkeypatch.setenv(JAR_ENV, str(jar))
 
@@ -211,6 +254,12 @@ def test_the_bundled_jar_is_the_last_route_to_epubcheck(
     monkeypatch.setattr(
         external.shutil, "which", lambda n: "/usr/bin/java" if n == "java" else None
     )
+    # These assert which jar wins, not whether this host has a JDK, so the probe
+    # gets an answer rather than the host's /usr/bin/java -- which on a Mac is a
+    # stub that refuses to start and on Windows is not a path at all.
+    monkeypatch.setattr(
+        external, "run", lambda argv: subprocess.CompletedProcess(argv, 0, "", "")
+    )
     command = epubcheck_command()
     assert command is not None
     assert command[:2] == ["/usr/bin/java", "-jar"]
@@ -232,6 +281,9 @@ def test_a_configured_jar_outranks_the_bundled_one(
     (tmp_path / "absent.toml").write_text("", encoding="utf-8")
     monkeypatch.setattr(
         external.shutil, "which", lambda n: "/usr/bin/java" if n == "java" else None
+    )
+    monkeypatch.setattr(
+        external, "run", lambda argv: subprocess.CompletedProcess(argv, 0, "", "")
     )
     command = epubcheck_command()
     assert command is not None and command[2] == str(theirs)

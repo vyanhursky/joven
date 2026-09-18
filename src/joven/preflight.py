@@ -212,7 +212,10 @@ def _java_hint() -> str:
 
 def _epubcheck() -> list[Check]:
     """Java and epubcheck, reported separately because the jar is useless alone."""
-    java = external.resolve("java")
+    # java_runtime, not resolve: macOS ships a /usr/bin/java stub on every install
+    # that resolves fine and refuses to start, and reporting that as a JVM is what
+    # made this check disagree with the render it was clearing.
+    java = external.java_runtime()
     command = epubcheck_command()
     if command is not None:
         return [
