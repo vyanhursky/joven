@@ -17,10 +17,14 @@ Security posture, for a server that now writes files and starts jobs:
 
 from __future__ import annotations
 
+import errno
 import json
 import re
 import secrets
+import sys
 import threading
+import urllib.error
+import urllib.request
 import webbrowser
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -145,6 +149,7 @@ ROUTES_GET = [
     (re.compile(rf"^/api/books/{_BOOK}/trace$"), "trace"),
     (re.compile(rf"^/api/books/{_BOOK}/files/(?P<name>[^/]+)$"), "file"),
     (re.compile(r"^/api/jobs$"), "jobs"),
+    (re.compile(r"^/api/ping$"), "ping"),
 ]
 ROUTES_POST = [
     (re.compile(r"^/api/books$"), "add_book"),
@@ -153,6 +158,7 @@ ROUTES_POST = [
     (re.compile(rf"^/api/books/{_BOOK}/annotations/(?P<annotation>[0-9a-f]{{12}})$"), "annotate"),
     (re.compile(r"^/api/jobs/cancel$"), "cancel"),
     (re.compile(r"^/api/pull$"), "pull"),
+    (re.compile(r"^/api/quit$"), "quit"),
 ]
 
 
@@ -238,6 +244,14 @@ class _Handler(BaseHTTPRequestHandler):
         page = resources.files(__package__).joinpath("page.html").read_text(encoding="utf-8")
         page = page.replace("{{TOKEN}}", self.state.token)
         self._send(200, page.encode(), "text/html; charset=utf-8")
+
+    def get_ping(self, query: dict) -> None:
+        """Cheap "is the thing on this port Joven?" — see :func:`serve`.
+
+        Deliberately not ``/api/doctor``: that probes the model server over the
+        network, and this is asked on every launch.
+        """
+        self._json(200, {"joven": True})
 
     def get_status(self, query: dict) -> None:
         settings = self.state.settings()
@@ -432,6 +446,52 @@ class _Handler(BaseHTTPRequestHandler):
         self._json(202, job.snapshot())
 
 
+    def post_quit(self, raw: bytes) -> None:
+        """Stop the server, because the page is the only place a reader can.
+
+        A packaged Joven has no other off switch on macOS: it is a console binary
+        inside a bundle with no Cocoa event loop, so it has no Dock menu, does not
+        answer Cmd-Q, and is invisible even to System Events. Activity Monitor was
+        the only way out — and an instance nobody can stop is an instance still
+        holding port 8770 when the icon is double-clicked again.
+
+        A running job is a deliberate refusal rather than a prompt: detect is
+        fifteen minutes of model output that cancelling keeps and killing does not.
+        """
+        job = self.state.runner.current
+        if job is not None and job.state == "running" and not json.loads(raw or b"{}").get("force"):
+            self._error(409, f"a {job.kind} job is running — cancel it first, or quit with force")
+            return
+        self._json(200, {"stopping": True})
+        # shutdown() blocks until serve_forever() returns, and serve_forever() is
+        # what called this handler: doing it inline deadlocks the process into
+        # exactly the unkillable state this endpoint exists to prevent.
+        threading.Thread(target=self.server.shutdown, daemon=True).start()
+
+
+class _Server(ThreadingHTTPServer):
+    """``ThreadingHTTPServer`` that will not quietly share a port on Windows.
+
+    ``HTTPServer`` sets ``allow_reuse_address``, which on Unix means only "do not
+    make me wait out TIME_WAIT to restart". On Windows ``SO_REUSEADDR`` means
+    something much stronger: a second socket may bind a port that is already
+    LISTENing. So the bind *succeeds*, two servers hold 8770, and which one
+    answers is anyone's guess — a worse failure than the crash this was meant to
+    replace, and a silent one.
+    """
+
+    allow_reuse_address = sys.platform != "win32"
+
+
+def _already_serving(url: str) -> bool:
+    """Is a Joven answering on ``url`` already?"""
+    try:
+        with urllib.request.urlopen(f"{url}api/ping", timeout=2) as response:  # noqa: S310
+            return bool(json.loads(response.read()).get("joven"))
+    except (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError):
+        return False
+
+
 def serve(
     *,
     home: Path | None = None,
@@ -439,10 +499,36 @@ def serve(
     port: int = 8770,
     open_browser: bool = True,
 ) -> None:
-    """Serve the UI until interrupted."""
-    state = UIState(Workspace(home))
-    server = ThreadingHTTPServer((host, port), partial(_Handler, state=state))
+    """Serve the UI until interrupted, or until the page asks it to stop.
+
+    A second launch is the case worth spelling out. Someone who closed the tab and
+    double-clicked the icon again is not asking for a second server, they are
+    asking to see Joven — and binding a taken port raises ``OSError`` from inside
+    ``ThreadingHTTPServer``, which from a Finder launch has no console to print it
+    to. The reader gets a two-second bounce in the Dock and nothing else, with the
+    running instance invisible and the icon apparently broken. So: if Joven is
+    already there, show it to them and leave it alone.
+    """
     url = f"http://{host}:{port}/"
+    # Ask before binding, rather than binding and reading the failure. Failing to
+    # bind is not a reliable signal: on Windows it does not fail at all (see
+    # _Server), and a bind that succeeds when it should not is silent.
+    if _already_serving(url):
+        print(f"joven is already running — {url}")
+        if open_browser:
+            webbrowser.open(url)
+        return
+
+    state = UIState(Workspace(home))
+    try:
+        server = _Server((host, port), partial(_Handler, state=state))
+    except OSError as exc:
+        if exc.errno not in (errno.EADDRINUSE, errno.EACCES):
+            raise
+        raise SystemExit(
+            f"error: port {port} is in use by something that is not Joven.\n"
+            f"       Use a different one: joven ui --port {port + 1}"
+        ) from exc
     print(f"joven ui — {url}")
     print(f"books live under {state.workspace.root}; Ctrl-C to stop")
     if open_browser:

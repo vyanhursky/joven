@@ -64,7 +64,13 @@ work from inside the disk image. Then:
 
 Double-click it. A page opens in your browser, at an address starting
 `127.0.0.1` — that is your own machine, not a website. Joven is not online, and
-closing the black window (Windows) or quitting the app stops it.
+press **Quit**, top right of the page, when you are done with it.
+
+Quit is worth knowing about rather than guessing at. On Windows you can also close
+the black window; on a Mac there is nothing else — Joven has no Dock menu and does
+not answer Cmd-Q, so the button on the page is the off switch. Leaving it running
+is harmless, and starting Joven again while it is already running just reopens the
+page rather than starting a second copy.
 
 The page opens on the **Setup** tab, which tells you what is still missing. The
 first time, that will be the model.

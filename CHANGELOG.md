@@ -3,6 +3,30 @@
 Release notes. The GitHub release for each tag takes its text from the matching
 section here, so every version has one.
 
+## Unreleased
+
+### Added
+
+- **A Quit button**, top right of the page. The packaged app has no other off
+  switch on macOS — it is a console binary in a bundle with no Cocoa event loop,
+  so it has no Dock menu, ignores Cmd-Q, and is invisible to System Events, which
+  left Activity Monitor as the only way to stop it. Refuses while a job is
+  running, unless you confirm.
+
+### Fixed
+
+- **Launching Joven while it was already running died silently.** Binding a taken
+  port raised `OSError` from inside the server, and a Finder launch has no console
+  to print it to: the reader got a two-second bounce in the Dock and nothing else,
+  with the running instance invisible and the icon apparently broken. A second
+  launch now notices the first, reopens the page at it, and exits. A port taken by
+  something that is not Joven says so and names `--port`. Joven also stops setting
+  `SO_REUSEADDR` on Windows, where it means "bind a port that is already in use"
+  rather than Unix's "do not wait out TIME_WAIT" — two servers on 8770, and no way
+  to tell which one answers.
+- The install guide said quitting the app stops it, which on macOS there was no
+  way to do.
+
 ## v1.0.0b6 — 2026-09-18
 
 ### Added
