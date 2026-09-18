@@ -21,6 +21,7 @@ import errno
 import json
 import re
 import secrets
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -468,6 +469,20 @@ class _Handler(BaseHTTPRequestHandler):
         threading.Thread(target=self.server.shutdown, daemon=True).start()
 
 
+class _Server(ThreadingHTTPServer):
+    """``ThreadingHTTPServer`` that will not quietly share a port on Windows.
+
+    ``HTTPServer`` sets ``allow_reuse_address``, which on Unix means only "do not
+    make me wait out TIME_WAIT to restart". On Windows ``SO_REUSEADDR`` means
+    something much stronger: a second socket may bind a port that is already
+    LISTENing. So the bind *succeeds*, two servers hold 8770, and which one
+    answers is anyone's guess — a worse failure than the crash this was meant to
+    replace, and a silent one.
+    """
+
+    allow_reuse_address = sys.platform != "win32"
+
+
 def _already_serving(url: str) -> bool:
     """Is a Joven answering on ``url`` already?"""
     try:
@@ -494,18 +509,22 @@ def serve(
     running instance invisible and the icon apparently broken. So: if Joven is
     already there, show it to them and leave it alone.
     """
-    state = UIState(Workspace(home))
     url = f"http://{host}:{port}/"
+    # Ask before binding, rather than binding and reading the failure. Failing to
+    # bind is not a reliable signal: on Windows it does not fail at all (see
+    # _Server), and a bind that succeeds when it should not is silent.
+    if _already_serving(url):
+        print(f"joven is already running — {url}")
+        if open_browser:
+            webbrowser.open(url)
+        return
+
+    state = UIState(Workspace(home))
     try:
-        server = ThreadingHTTPServer((host, port), partial(_Handler, state=state))
+        server = _Server((host, port), partial(_Handler, state=state))
     except OSError as exc:
         if exc.errno not in (errno.EADDRINUSE, errno.EACCES):
             raise
-        if _already_serving(url):
-            print(f"joven is already running — {url}")
-            if open_browser:
-                webbrowser.open(url)
-            return
         raise SystemExit(
             f"error: port {port} is in use by something that is not Joven.\n"
             f"       Use a different one: joven ui --port {port + 1}"

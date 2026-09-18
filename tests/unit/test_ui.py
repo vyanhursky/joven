@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import sys
 import threading
 import time
 from functools import partial
@@ -534,9 +535,12 @@ def test_quit_with_force_overrides_a_running_job(ui) -> None:
 def test_a_second_serve_finds_the_first_instead_of_dying(ui, monkeypatch) -> None:
     """The bug a reader meets as a two-second bounce in the Dock and no window.
 
-    Binding a taken port raises OSError from inside ThreadingHTTPServer, and a
-    Finder launch has no console to print it to. Serve must notice that the thing
-    on the port is Joven, show it, and leave the running one alone.
+    Serve must notice that the thing on the port is Joven, show it, and leave the
+    running one alone. The timeout is the point of this test as much as the
+    assertion: the first version of this fix asked the *bind* whether the port was
+    free, which on Windows succeeds on a port already in LISTEN — so serve got a
+    working socket, called serve_forever, and hung the suite until the job was
+    cancelled. Anything that returns here is fine; anything that blocks is the bug.
     """
     from joven.ui import server as server_module
 
@@ -545,10 +549,31 @@ def test_a_second_serve_finds_the_first_instead_of_dying(ui, monkeypatch) -> Non
     opened: list[str] = []
     monkeypatch.setattr(server_module.webbrowser, "open", opened.append)
 
-    # Returns rather than raising, and starts nothing.
-    server_module.serve(host=host, port=port, open_browser=True)
+    # On its own thread so that "it blocked" fails the test instead of hanging it.
+    # Calling serve() directly here is what wedged CI for sixteen minutes.
+    returned = threading.Event()
 
+    def call() -> None:
+        server_module.serve(host=host, port=port, open_browser=True)
+        returned.set()
+
+    threading.Thread(target=call, daemon=True).start()
+
+    assert returned.wait(timeout=20), "serve() bound the taken port and blocked"
     assert opened == [f"http://{host}:{port}/"]
+
+
+def test_the_server_does_not_share_a_port_on_windows() -> None:
+    """``allow_reuse_address`` means two different things, and one of them is bad.
+
+    On Unix it only waives TIME_WAIT. On Windows SO_REUSEADDR lets a second socket
+    bind a port that is already LISTENing, so two Jovens would hold 8770 and which
+    one answers is anyone's guess. Asserted as the platform rule rather than by
+    binding twice, because the failure it guards against only exists on Windows.
+    """
+    from joven.ui.server import _Server
+
+    assert _Server.allow_reuse_address == (sys.platform != "win32")
 
 
 def test_a_port_taken_by_something_else_says_so(tmp_path, monkeypatch) -> None:
