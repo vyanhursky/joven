@@ -3,7 +3,7 @@
 Release notes. The GitHub release for each tag takes its text from the matching
 section here, so every version has one.
 
-## Unreleased
+## v1.0.0b7 — 2026-09-18
 
 ### Added
 
