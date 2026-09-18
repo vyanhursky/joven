@@ -470,3 +470,103 @@ def test_pull_competes_with_other_jobs_for_the_one_slot(ui, tmp_path, monkeypatc
     with pytest.raises(Busy):
         state.runner.start("pull", "", pull_job("qwen3:8b", "http://localhost:1"))
     release.set()
+
+
+# ------------------------------------------------------------ stopping it
+
+
+def test_ping_identifies_the_server(ui) -> None:
+    """How a second launch tells Joven apart from whatever else took the port."""
+    status, body = _client(ui).get("/api/ping")
+    assert status == 200
+    assert body == {"joven": True}
+
+
+def test_quit_needs_the_session_token(ui) -> None:
+    """The one endpoint that ends the process is not one a stray page may call."""
+    httpd, _ = ui
+    status, _ = Client(httpd, token=None).post("/api/quit", {})
+    assert status == 403
+
+
+def test_quit_refuses_while_a_job_is_running(ui) -> None:
+    """Detect is fifteen minutes of model output; cancelling keeps it, killing does not."""
+    _, state = ui
+    started, release = threading.Event(), threading.Event()
+
+    def slow(job):
+        started.set()
+        release.wait(timeout=5)
+        return {}
+
+    state.runner.start("detect", "", slow)
+    assert started.wait(timeout=5)
+    try:
+        status, body = _client(ui).post("/api/quit", {})
+        assert status == 409
+        assert "detect" in body["error"]
+    finally:
+        release.set()
+
+
+def test_quit_with_force_overrides_a_running_job(ui) -> None:
+    """The page asks first, then says force — so force has to actually mean it."""
+    httpd, state = ui
+    started, release = threading.Event(), threading.Event()
+
+    def slow(job):
+        started.set()
+        release.wait(timeout=5)
+        return {}
+
+    state.runner.start("detect", "", slow)
+    assert started.wait(timeout=5)
+    try:
+        # shutdown() is what the handler spawns; the fixture calls it again on
+        # teardown, which is harmless. Assert the answer, not the socket closing.
+        status, body = _client(ui).post("/api/quit", {"force": True})
+        assert status == 200
+        assert body == {"stopping": True}
+    finally:
+        release.set()
+
+
+def test_a_second_serve_finds_the_first_instead_of_dying(ui, monkeypatch) -> None:
+    """The bug a reader meets as a two-second bounce in the Dock and no window.
+
+    Binding a taken port raises OSError from inside ThreadingHTTPServer, and a
+    Finder launch has no console to print it to. Serve must notice that the thing
+    on the port is Joven, show it, and leave the running one alone.
+    """
+    from joven.ui import server as server_module
+
+    httpd, _ = ui
+    host, port = httpd.server_address
+    opened: list[str] = []
+    monkeypatch.setattr(server_module.webbrowser, "open", opened.append)
+
+    # Returns rather than raising, and starts nothing.
+    server_module.serve(host=host, port=port, open_browser=True)
+
+    assert opened == [f"http://{host}:{port}/"]
+
+
+def test_a_port_taken_by_something_else_says_so(tmp_path, monkeypatch) -> None:
+    """A clear exit beats a traceback, and beats silently stealing the next port."""
+    import socket
+
+    from joven.ui import server as server_module
+
+    monkeypatch.setenv("JOVEN_CONFIG", str(tmp_path / "joven.toml"))
+    (tmp_path / "joven.toml").write_text('backend = "stub"\n', encoding="utf-8")
+
+    squatter = socket.socket()
+    squatter.bind(("127.0.0.1", 0))
+    squatter.listen(1)
+    host, port = squatter.getsockname()
+    try:
+        with pytest.raises(SystemExit) as exit_info:
+            server_module.serve(home=tmp_path / "home", host=host, port=port, open_browser=False)
+        assert "is in use by something that is not Joven" in str(exit_info.value)
+    finally:
+        squatter.close()

@@ -121,6 +121,19 @@
   .verdict { font-weight:600; padding:.5rem 0; }
   .verdict.ready { color:var(--accent); }
   .verdict.blocked { color:var(--warn); }
+  header .quit { margin-left:.6rem; }
+  header .quit:hover { border-color:var(--warn); color:var(--warn); }
+  /* The veil is the only feedback a reader gets that quitting worked: the server
+     is gone, so nothing on the page can refresh itself afterwards. */
+  /* :not([hidden]) is load-bearing: a bare `display:grid` here is an author rule
+     and beats the UA stylesheet's [hidden]{display:none}, so the veil would cover
+     the page from the moment it loads. */
+  #stoppedVeil:not([hidden]) { position:fixed; inset:0; z-index:50; display:grid;
+                 place-items:center; background:rgba(0,0,0,.72); backdrop-filter:blur(3px); }
+  .stopped-card { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+                  padding:1.6rem 1.9rem; max-width:32rem; text-align:center; }
+  .stopped-card h2 { margin:0 0 .5rem; font-size:1.15rem; }
+  .stopped-card p { margin:0; color:var(--muted); line-height:1.5; }
 </style>
 </head>
 <body>
@@ -137,7 +150,16 @@
   <span class="spacer"></span>
   <span class="book-pill" id="bookPill">no book chosen</span>
   <span class="job-pill" id="jobPill" hidden></span>
+  <button id="quitBtn" class="quit" title="Stop Joven and close the server">Quit</button>
 </header>
+
+<div id="stoppedVeil" hidden>
+  <div class="stopped-card">
+    <h2>Joven has stopped</h2>
+    <p>You can close this tab. Double-click Joven again whenever you want it back —
+       nothing was lost, and your books stay where they are.</p>
+  </div>
+</div>
 <main>
 
 <section id="tab-setup" hidden>
@@ -701,6 +723,37 @@ function renderDoctor() {
   $('setupPullCancel').hidden = !pulling;
   $('setupOllama').hidden = !serverDown;
 }
+
+$('quitBtn').addEventListener('click', async () => {
+  // Two rounds at most: the first refusal names the running job, and only then is
+  // there anything to confirm. Asking "are you sure" when nothing is at stake
+  // teaches people to click through the one time it matters.
+  let force = false;
+  for (;;) {
+    try {
+      await api('/api/quit', {method: 'POST', json: {force}});
+      if (state.jobPollTimer) clearInterval(state.jobPollTimer);
+      $('stoppedVeil').hidden = false;
+      return;
+    } catch (err) {
+      const busy = /job is running/.test(err.message);
+      if (busy && !force) {
+        if (!confirm(err.message.replace(/, or quit with force$/, '') +
+                     '.\n\nQuit anyway and lose its progress?')) return;
+        force = true;
+        continue;
+      }
+      // The server going away mid-request is the success case, not a failure:
+      // it answered and then stopped listening.
+      if (/Failed to fetch|NetworkError|load failed/i.test(err.message)) {
+        $('stoppedVeil').hidden = false;
+        return;
+      }
+      alert('Could not stop Joven: ' + err.message);
+      return;
+    }
+  }
+});
 
 $('setupRecheck').addEventListener('click', loadDoctor);
 $('setupPullCancel').addEventListener('click', () => api('/api/jobs/cancel', {method: 'POST'}));

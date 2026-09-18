@@ -7,7 +7,12 @@ verify, download. One command starts it:
 joven ui
 ```
 
-It opens `http://127.0.0.1:8770/` in your browser and stays running until Ctrl-C.
+It opens `http://127.0.0.1:8770/` in your browser and stays running until Ctrl-C,
+or until you press **Quit** on the page — which is the only off switch the
+packaged app has on macOS, where there is no console to interrupt.
+
+Running `joven ui` while one is already up does not start a second server: it
+notices the first, reopens the page at it, and exits.
 Every button calls exactly what the matching command calls — `detect()`,
 `render_epub()`, `verify()` — so the page and the command line cannot drift apart,
 and anything started here can be finished from the shell and vice versa.
