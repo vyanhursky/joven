@@ -18,11 +18,21 @@
 # directory on *every* launch, which at this size is a wait a reader reads as a
 # hang; onedir starts in ~260 ms. See docs/releasing.md.
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+import sys
 from pathlib import Path
+
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 SPEC_DIR = Path(SPECPATH).resolve()
 VENDOR = SPEC_DIR / "vendor"
+
+# Generated from the README's horse by packaging/make_icon.py and committed, so a
+# build needs no Pillow. Windows reads the .ico off the exe, macOS the .icns off
+# the bundle; Linux has no icon in a tarball at all -- a .desktop file is what
+# carries one there, and this ships the PNG for whoever writes one.
+ICONS = SPEC_DIR / "icons"
+WINDOWS_ICON = ICONS / "joven.ico"
+MACOS_ICON = ICONS / "joven.icns"
 
 if not VENDOR.is_dir():
     raise SystemExit(
@@ -33,6 +43,7 @@ datas = [
     # (source, destination-inside-the-bundle)
     (str(SPEC_DIR.parent / "src" / "joven" / "ui" / "page.html"), "joven/ui"),
     (str(SPEC_DIR / "NOTICE"), "."),
+    (str(ICONS / "joven.png"), "icons"),
 ]
 # Everything vendor/ holds, at the path joven.external expects to find it.
 for path in VENDOR.rglob("*"):
@@ -69,6 +80,10 @@ exe = EXE(
     # it is where a crash before the browser opens becomes visible, and `Joven.exe
     # detect book.epub` still has to work for everyone else.
     console=True,
+    # Windows only -- the macOS icon rides on the BUNDLE below, and PyInstaller
+    # ignores this there. Passed as None off-Windows rather than a path it would
+    # quietly do nothing with.
+    icon=str(WINDOWS_ICON) if sys.platform == "win32" and WINDOWS_ICON.is_file() else None,
 )
 
 coll = COLLECT(
@@ -81,13 +96,11 @@ coll = COLLECT(
 )
 
 # macOS wants something to double-click, and a bare Unix executable is not it.
-import sys
-
 if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="Joven.app",
-        icon=None,
+        icon=str(MACOS_ICON) if MACOS_ICON.is_file() else None,
         bundle_identifier="com.vyanhursky.joven",
         info_plist={
             "CFBundleName": "Joven",

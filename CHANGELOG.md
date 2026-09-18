@@ -16,6 +16,11 @@ section here, so every version has one.
 - **`joven doctor`** — checks the model server, the model, `kepubify`, Java and
   `epubcheck`, and reports what each missing piece costs rather than only that it
   is missing. Exits non-zero only when something stops a book being annotated.
+- **An icon** on the Windows and macOS builds, drawn from the README's horse by
+  `packaging/make_icon.py` so there is only ever one copy of the art. Small sizes
+  get the strokes thickened first, because the horse is line work and shrinks to a
+  smudge otherwise. Linux keeps none: a tarball has nowhere to put one, so the PNG
+  ships in the bundle for whoever writes a `.desktop` file.
 - **A Setup tab** in the browser UI, showing the same checks, and the page now
   opens on it when something required is missing instead of on a drop zone that
   cannot work. Where the model was never pulled it offers a **Pull model** button;
