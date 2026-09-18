@@ -202,6 +202,12 @@ def test_the_bundled_jar_is_the_last_route_to_epubcheck(
     monkeypatch.setenv(external.VENDOR_ENV, str(vendor))
     monkeypatch.setenv("JOVEN_CONFIG", str(tmp_path / "absent.toml"))
     (tmp_path / "absent.toml").write_text("", encoding="utf-8")
+    # "No configured jar" has to be arranged, not assumed: JOVEN_EPUBCHECK_JAR
+    # outranks the bundled copy on purpose, and CI's Windows job exports it. An
+    # empty JOVEN_CONFIG does not neutralise it, because the variable beats the
+    # file. Without this the test passes or fails according to whose machine it
+    # is running on.
+    monkeypatch.delenv(JAR_ENV, raising=False)
     monkeypatch.setattr(
         external.shutil, "which", lambda n: "/usr/bin/java" if n == "java" else None
     )
