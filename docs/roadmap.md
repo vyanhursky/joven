@@ -19,6 +19,11 @@ notes live with the item so the work can start from this page.
   editing, cancel and resume, and a trace browser. See
   [browser-ui.md](browser-ui.md). Building it against a real library turned up
   `joven strip` and the refusal to render onto a Joven output.
+- **Reachable without a terminal** — a downloadable app that bundles `kepubify`
+  and `epubcheck`, `joven doctor`, and a Setup tab the page opens on when
+  something required is missing. See [install-app.md](install-app.md). The seven
+  install steps a non-technical reader faced are now two: download Joven,
+  download Ollama.
 
 Two findings from those runs worth carrying forward:
 
@@ -89,6 +94,14 @@ language".
 
 **Other readers.** Apple Books already works. Verifying Kindle via Calibre
 conversion, with a `--target` that skips `kepubify`, would widen the audience.
+
+**Signing the app.** The builds are unsigned, so Windows SmartScreen and macOS
+Gatekeeper both warn on first run — documented in [install-app.md](install-app.md),
+and the single most likely point for a non-technical reader to give up. Apple
+Developer is about $99/yr and a Windows OV certificate $100–400/yr, and an OV
+certificate still builds SmartScreen reputation slowly. Nothing in the build would
+have to change but the CI job and its secrets, which is why this is a purchase
+decision rather than a design one.
 
 **A public-domain fixture** with real Spanish in it would let the `realbook`
 tests run in CI without a copyrighted book.

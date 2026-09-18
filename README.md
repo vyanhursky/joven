@@ -5,6 +5,18 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+> ### Just want to read a book?
+>
+> **[Download Joven](https://github.com/vyanhursky/joven/releases/latest)** —
+> [Windows](https://github.com/vyanhursky/joven/releases/latest) ·
+> [Mac](https://github.com/vyanhursky/joven/releases/latest) ·
+> [Linux](https://github.com/vyanhursky/joven/releases/latest) — then double-click
+> it. No terminal, no Python, nothing to install first; the app tells you what it
+> still needs and fetches it for you. **[Five-minute setup
+> guide →](docs/install-app.md)**
+>
+> Everything below is for installing from PyPI and working from the command line.
+
 ```
                                       :@@#                               =@@+.
                                      +@@@@                              #@@@@.
@@ -240,7 +252,11 @@ Joven at the jar once:
 setx JOVEN_EPUBCHECK_JAR "C:\tools\epubcheck-5.1.0\epubcheck.jar"
 ```
 
+`setx` writes the variable for *future* terminals, so open a new one before
+running `joven` — the window you typed it in will not see it.
+
 Skipping this does not fail loudly: `verify` reports epubcheck as `SKIPPED`.
+`joven doctor` says so plainly, and the downloadable app carries its own copy.
 
 </details>
 
@@ -277,12 +293,21 @@ in [docs/browser-ui.md](docs/browser-ui.md).
 The same work as separate steps, on the same files:
 
 ```bash
+joven doctor                                               # is everything installed and running?
 joven inspect book.epub                                    # structure, DRM, word counts
 joven detect  book.epub -o annotations.json --trace trace.jsonl
 joven review  annotations.json --epub book.epub            # triage, suspect passages first
 joven render  book.epub annotations.json -o out/           # EPUB 3 + KEPUB for the Kobo
 joven verify  out/book.annotated.epub --original book.epub
 ```
+
+**`doctor`** is what to run when something is not working, and before the first
+book. It checks the model server, the model, `kepubify`, Java and `epubcheck`, and
+reports what each missing piece actually costs — a missing model stops a run, a
+missing `kepubify` costs you the KEPUB, a missing Java narrows the integrity gate
+from twelve checks to eleven. It exits non-zero only for the first kind. The
+browser UI's **Setup** tab shows the same checks and opens on them when something
+required is missing.
 
 **`detect`** is the slow step. A progress bar shows paragraphs done, escalations and
 footnotes so far. It writes `annotations.json` and, with `--trace`, a record of
@@ -348,8 +373,21 @@ python3.13 -m venv .venv
 JOVEN_TEST_EPUB=/path/to/book.epub ./.venv/bin/pytest   # opt in to the real-book tests
 ```
 
-On Windows the venv puts its executables in `Scripts\`, not `bin/`. Tests never hit
-the network — a stub stands in for the model everywhere. Two guard scripts run in
+On Windows the venv puts its executables in `Scripts\`, not `bin/`, so the lines
+above read `.venv\Scripts\pytest`. To get `joven` itself on `PATH` for a shell
+session, activate the venv first — in PowerShell that is `.venv\Scripts\Activate.ps1`,
+not the extensionless `activate`, which is the bash script and does nothing here:
+
+```powershell
+.venv\Scripts\Activate.ps1      # prompt becomes (.venv)
+joven doctor
+```
+
+Either works; calling `.venv\Scripts\joven.exe` directly needs no activation at
+all, which is the quicker answer if PowerShell's execution policy blocks the
+script.
+
+Tests never hit the network — a stub stands in for the model everywhere. Two guard scripts run in
 CI: `tools/check_docs.py` checks that every documented command and flag exists, and
 `tools/check_no_book_content.py` checks that no book text is tracked. Model
 benchmarks are tools, not tests, because they need a running server:
@@ -368,6 +406,8 @@ The code is about 7,000 lines under `src/joven/`:
 | [`review.py`](src/joven/review.py), [`suspicion.py`](src/joven/suspicion.py) | The review page, and the heuristic that sorts likely-wrong translations to the top |
 | [`ui/`](src/joven/ui) | `joven ui` — books, a one-at-a-time job runner, the JSON routes, and the page |
 | [`config.py`](src/joven/config.py) | `joven.toml`, `JOVEN_*`, and which one wins |
+| [`preflight.py`](src/joven/preflight.py) | `joven doctor` and the UI's Setup tab — every dependency, and what its absence costs |
+| [`external.py`](src/joven/external.py) | Finding `kepubify` and `java`, the app's bundled copies first |
 | [`verify.py`](src/joven/verify.py) | The 12-check integrity gate, including the text-preservation invariant |
 | [`trace.py`](src/joven/trace.py) | One record per segment, annotated or not |
 
@@ -375,6 +415,7 @@ The code is about 7,000 lines under `src/joven/`:
 
 | | |
 |---|---|
+| [docs/install-app.md](docs/install-app.md) | The downloadable app, for readers who will not open a terminal |
 | [docs/browser-ui.md](docs/browser-ui.md) | `joven ui`, tab by tab, with screenshots |
 | [docs/configuration.md](docs/configuration.md) | `joven.toml` and `JOVEN_*`, the OpenAI-compatible backend, `--workers`, the sidecar commands |
 | [docs/architecture.md](docs/architecture.md) | How it is built and why each part is shaped the way it is |

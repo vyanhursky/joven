@@ -56,6 +56,21 @@ works, and so does copying a sidecar you made on the command line into place.
 
 ## The tabs
 
+**Setup.** `joven doctor` as a page: the model server, the model, `kepubify`, Java
+and `epubcheck`, each with what its absence costs. The page renders what the
+command reports and decides nothing about severity itself, so the two cannot
+drift. **The page opens here when something required is missing**, rather than
+showing a drop zone that cannot work — which is the whole reason the tab exists.
+An explicit `#hash` still wins, so a deep link goes where it says.
+
+Where Ollama is not running it offers the download link; where Ollama is running
+but the model was never pulled it offers **Pull model**, which downloads it
+through the same job runner as everything else, so it cannot start beside a detect
+that is waiting on the same server. Ollama reports bytes per layer rather than for
+the whole download, so the bar is the current layer's and is labelled as such.
+Cancelling costs nothing: Ollama keeps the blobs it already has and pulling again
+resumes.
+
 **Books.** Drop or pick a file, then the same facts `joven inspect` prints: words,
 paragraphs, EPUB version, metadata, the spine. A book that would be refused —
 DRM, not a zip, no OPF — is refused here, before it takes up residence.

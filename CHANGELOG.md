@@ -3,6 +3,34 @@
 Release notes. The GitHub release for each tag takes its text from the matching
 section here, so every version has one.
 
+## Unreleased
+
+### Added
+
+- **A downloadable app** — `Joven-windows-x64.zip`, `Joven-macos-arm64.dmg`,
+  `Joven-linux-x64.tar.gz` on each release. Double-clicking it opens the browser
+  workflow: no Python, no `PATH`, no terminal. It carries `kepubify` and
+  `epubcheck` itself, so the only thing left to install is Ollama and its model.
+  About 220 MB to download, ~260 ms to start. Unsigned, so Windows and macOS warn
+  on first run — [docs/install-app.md](docs/install-app.md) walks through it.
+- **`joven doctor`** — checks the model server, the model, `kepubify`, Java and
+  `epubcheck`, and reports what each missing piece costs rather than only that it
+  is missing. Exits non-zero only when something stops a book being annotated.
+- **A Setup tab** in the browser UI, showing the same checks, and the page now
+  opens on it when something required is missing instead of on a drop zone that
+  cannot work. Where the model was never pulled it offers a **Pull model** button;
+  cancelling is safe, because Ollama keeps what it has and resumes.
+
+### Fixed
+
+- The missing-Java hint named `winget` on every platform, including Linux and
+  macOS.
+- `setx JOVEN_EPUBCHECK_JAR` does not affect the terminal it is typed in; the
+  README now says so, and documents PowerShell's `Activate.ps1` — the
+  extensionless `activate` beside it is the bash script and silently does nothing.
+- A UI test asserted that a detect job was still running when its POST returned,
+  which the stub backend could beat about one run in six on Linux.
+
 ## v1.0.0b5 — 2026-09-06
 
 ### Added
