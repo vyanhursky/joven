@@ -84,17 +84,19 @@ and the `release` job attaches the three archives beside the wheel. Nothing here
 needs doing by hand at release time; what follows is for changing how it is built.
 
 ```bash
-python packaging/fetch_vendor.py     # kepubify, and epubcheck unless --no-epubcheck
+python packaging/fetch_vendor.py     # kepubify, the one tool the app ships
 pyinstaller packaging/joven.spec --noconfirm --distpath packaging/dist --workpath packaging/build
 ```
 
 `packaging/vendor/` is gitignored and fetched fresh by every build, so bumping
-`KEPUBIFY_VERSION` or `EPUBCHECK_VERSION` in `fetch_vendor.py` is the whole of a
-dependency bump. Both licences permit redistribution with attribution, which
+`KEPUBIFY_VERSION` in `fetch_vendor.py` is the whole of a
+dependency bump. Its licence permits redistribution with attribution, which
 `packaging/NOTICE` provides and the build ships.
 
 **onedir, not onefile**, and the reason is measured rather than assumed. Windows,
-2026-09-17: 357 MB on disk, 220 MB zipped, ~260 ms to start; Ubuntu 24.04: 375 MB
+2026-09-17: 357 MB on disk, 220 MB zipped, ~260 ms to start; Ubuntu 24.04: 375 MB.
+Since b8 stopped bundling epubcheck each is about 22 MB smaller: the macOS DMG
+measured 223 MB before and 201 MB after.
 and ~210 ms. onefile would unpack all of that to a temp directory on *every*
 launch. The bulk is `lingua` — a single ~291 MB extension module with the language
 models compiled in, which is also why the size cannot be reduced by supporting

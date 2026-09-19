@@ -3,14 +3,17 @@ Joven — third-party software bundled with the downloadable app
 
 Joven itself is MIT-licensed; see LICENSE in the repository root.
 
-The packaged app (Joven.exe / Joven.app / the Linux build) ships two external
-tools so that a reader does not have to install them by hand. Both are
-redistributed under permissive licences that require attribution, which is what
-this file provides. Neither is modified in any way — each is the official release
-artefact, downloaded at build time by packaging/fetch_vendor.py.
+The packaged app (Joven.exe / Joven.app / the Linux build) ships one external
+tool so that a reader does not have to install it by hand. It is redistributed
+under a permissive licence that requires attribution, which is what this file
+provides. It is not modified in any way — it is the official release artefact,
+downloaded at build time by packaging/fetch_vendor.py.
 
-Installing Joven from PyPI (`pip install joven-ebook-annotator`) bundles neither;
+Installing Joven from PyPI (`pip install joven-ebook-annotator`) does not bundle it;
 this file applies only to the packaged app.
+
+epubcheck was bundled up to v1.0.0b7 and is not redistributed any more, so its
+attribution has been removed along with it.
 
 
 -------------------------------------------------------------------------------
@@ -42,26 +45,3 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
--------------------------------------------------------------------------------
-epubcheck — https://github.com/w3c/epubcheck
-The reference EPUB validator, run as the external gate on Joven's output.
-Bundled at: vendor/epubcheck/
-Licence: BSD 3-Clause
--------------------------------------------------------------------------------
-
-epubcheck is redistributed as its official distribution directory, unmodified.
-That directory carries its own licence files, and they ship with it rather than
-being copied here, because epubcheck itself bundles thirty-seven third-party
-libraries whose terms are recorded alongside:
-
-    vendor/epubcheck/LICENSE.txt       the BSD 3-Clause licence and copyrights
-    vendor/epubcheck/THIRD-PARTY.txt   the libraries epubcheck bundles
-    vendor/epubcheck/licenses/         their licence texts
-
-Copyright © 2007 Adobe Systems Incorporated
-Copyright © 2008 IDPF
-Copyright © 2017 W3C (MIT, ERCIM, Keio, Beihang)
-
-epubcheck needs a Java runtime, which the app does not bundle. Where there is no
-JVM, Joven reports the epubcheck check as SKIPPED and the other eleven integrity
-checks still run.

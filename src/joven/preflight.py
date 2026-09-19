@@ -196,52 +196,55 @@ def _kepubify() -> Check:
     )
 
 
-def _java_hint() -> str:
-    """How to get a JVM, on the platform actually running.
+def _install_hint() -> str:
+    """How to get epubcheck, on the platform actually running.
 
     Worth the branch: a hint is only useful if it names a command that exists
-    here, and telling a Linux reader to run ``winget`` is worse than saying
+    here, and telling a Linux reader to run ``scoop`` is worse than saying
     nothing.
     """
     if sys.platform == "win32":
-        return "epubcheck is a JAR and needs a JVM: winget install Microsoft.OpenJDK.21"
+        return "Optional: scoop install epubcheck, or set " + JAR_ENV + " to epubcheck.jar"
     if sys.platform == "darwin":
-        return "epubcheck is a JAR and needs a JVM: brew install openjdk"
-    return "epubcheck is a JAR and needs a JVM: install your distribution's JRE (e.g. default-jre)"
+        return "Optional: brew install epubcheck"
+    return "Optional: install epubcheck from your distribution, or from w3c/epubcheck"
 
 
 def _epubcheck() -> list[Check]:
-    """Java and epubcheck, reported separately because the jar is useless alone."""
+    """One row, because there is only one thing a reader can act on.
+
+    This used to report ``java`` separately, and that was right while the app
+    shipped its own ``epubcheck.jar``: the jar was present, so the JVM really was
+    the missing piece, and naming it was the actionable part. The app no longer
+    ships the jar, and now a bare "java — not found" tells a reader that something
+    they never asked for is absent, next to a second row saying the same thing
+    again. So: one row about epubcheck, and Java appears only in the case where it
+    is genuinely what is missing — a jar someone configured, with no JVM to run it.
+    """
+    if epubcheck_command() is not None:
+        return [Check("epubcheck", OK, "found", "", OPTIONAL)]
+
     # java_runtime, not resolve: macOS ships a /usr/bin/java stub on every install
     # that resolves fine and refuses to start, and reporting that as a JVM is what
     # made this check disagree with the render it was clearing.
-    java = external.java_runtime()
-    command = epubcheck_command()
-    if command is not None:
+    if load_config().settings.epubcheck_jar and external.java_runtime() is None:
         return [
-            Check("java", OK, "found", "", OPTIONAL),
-            Check("epubcheck", OK, "found", "", OPTIONAL),
-        ]
-    if java is None:
-        return [
-            Check("java", WARN, "not found", _java_hint(), OPTIONAL),
             Check(
                 "epubcheck",
                 WARN,
-                "cannot run without Java",
-                "Eleven of the twelve integrity checks still run.",
+                "the configured jar needs a Java runtime",
+                "Eleven of the twelve integrity checks still run without it.",
                 OPTIONAL,
-            ),
+            )
         ]
     return [
-        Check("java", OK, "found", "", OPTIONAL),
         Check(
             "epubcheck",
             WARN,
-            "not found",
-            f"Put epubcheck on PATH, or set {JAR_ENV} to epubcheck.jar.",
+            "not installed — the 12th integrity check is skipped",
+            _install_hint(),
             OPTIONAL,
-        ),
+        )
     ]
 
 

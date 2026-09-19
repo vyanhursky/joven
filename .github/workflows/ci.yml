@@ -218,6 +218,13 @@ jobs:
           cat doctor.txt
           grep -q "model server" doctor.txt
           grep -q "\[OK  \] kepubify" doctor.txt
+          # epubcheck is deliberately not bundled any more: the jar needs a JVM
+          # the app cannot ship, so it was 32 MB that never ran for most readers.
+          # Re-adding it would be silent -- the app would just get bigger.
+          if find packaging/dist -name "epubcheck*" | grep -q .; then
+            echo "::error::epubcheck is back in the bundle; see packaging/fetch_vendor.py"
+            exit 1
+          fi
 
       - name: Smoke-test the built app (Windows)
         if: runner.os == 'Windows'
@@ -227,6 +234,10 @@ jobs:
           cat doctor.txt
           grep -q "model server" doctor.txt
           grep -q "\[OK  \] kepubify" doctor.txt
+          if find packaging/dist -name "epubcheck*" | grep -q .; then
+            echo "::error::epubcheck is back in the bundle; see packaging/fetch_vendor.py"
+            exit 1
+          fi
 
       # onedir, so it has to be one file before anyone can download it. macOS
       # gets a DMG because that is what a Mac user expects to double-click;

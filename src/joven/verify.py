@@ -327,6 +327,11 @@ def epubcheck_command() -> list[str] | None:
     validates our output silently downgrades itself to SKIPPED — the suite stays
     green while no longer checking the one thing it exists to check.
 
+    There was a third route, into a copy shipped inside the packaged app. It is
+    gone: the jar needs a JVM the app cannot bundle, so for the readers the app
+    exists for it was 32 MB that never ran. epubcheck is now something a reader
+    installs, like any other validator, and this finds it the same two ways.
+
     Returns the argv rather than a bool so callers invoke the *resolved* path;
     see :mod:`joven.external` for why the bare name is not safe on Windows.
     """
@@ -334,18 +339,9 @@ def epubcheck_command() -> list[str] | None:
     if launcher:
         return [launcher]
     # The environment variable is one of the routes the config module reads, so a
-    # joven.toml `epubcheck_jar = ...` arrives here the same way. A path someone
-    # set explicitly outranks the app's own copy.
+    # joven.toml `epubcheck_jar = ...` arrives here the same way.
     if jar := load_config().settings.epubcheck_jar:
         return external.java_command(Path(jar))
-    # Third route: the packaged app ships the official distribution, so a reader
-    # who happens to have a JVM gets the real check instead of SKIPPED without
-    # setting anything. The whole directory ships, not just the jar -- the jar's
-    # manifest Class-Path points at lib/, and without it epubcheck does not start.
-    if (vendor := external.vendor_dir()) is not None:
-        bundled = vendor / "epubcheck" / "epubcheck.jar"
-        if bundled.is_file():
-            return external.java_command(bundled)
     return None
 
 

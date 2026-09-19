@@ -1,48 +1,34 @@
-"""Download the binaries the packaged app ships with.
+"""Download the binary the packaged app ships with.
 
-Joven shells out to two tools that Python should not reimplement, and the whole
-point of the downloadable app is that a reader installs nothing by hand. So the
-build fetches them and :mod:`joven.external` prefers the bundled copy.
+    python packaging/fetch_vendor.py
 
-    python packaging/fetch_vendor.py                 # kepubify and epubcheck
-    python packaging/fetch_vendor.py --no-epubcheck  # kepubify only
+**kepubify** is a single static Go binary with no runtime, so it ships: without
+it there is no KEPUB, and the KEPUB is what the Kobo wants. Its licence permits
+redistribution with attribution; see ``packaging/NOTICE``.
 
-**kepubify** is a single static Go binary with no runtime, so it always ships:
-without it there is no KEPUB, and the KEPUB is what the Kobo wants.
-
-**epubcheck** is a JAR, and a JAR needs a JVM that the app cannot bundle. It
-ships anyway, at the cost of about 32 MB, because a reader who *does* have Java
-then gets the real validation instead of ``SKIPPED`` without setting anything —
-and ``--no-epubcheck`` exists for when that trade stops being worth it. The whole
-distribution is unpacked, not just the jar: the jar's manifest ``Class-Path``
-points at ``lib/``, and without those 37 jars epubcheck does not start. The
-distribution also carries its own ``LICENSE.txt``, ``THIRD-PARTY.txt`` and
-``licenses/``, which is what we are obliged to redistribute alongside it.
-
-Both licences permit redistribution with attribution: kepubify is MIT, epubcheck
-is BSD-3-Clause. See ``packaging/NOTICE``.
+**epubcheck** used to ship here too, and no longer does. It is a JAR, and a JAR
+needs a JVM the app cannot bundle — so those 32 MB, a seventh of the download,
+did nothing for the majority of readers who have no Java, while the two Setup
+rows explaining its absence were the most confusing thing on the page. It stays a
+development and CI dependency, where it has earned its place: it is the only gate
+that validates the output as an EPUB rather than as a diff of the input, and it
+caught twenty real conformance errors in the EPUB 3 upgrade. A reader who wants
+it installs it and Joven finds it on ``PATH``.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
-import io
 import platform
-import shutil
 import stat
 import sys
 import urllib.request
-import zipfile
 from pathlib import Path
 
 KEPUBIFY_VERSION = "4.0.4"
-EPUBCHECK_VERSION = "5.1.0"
 
 KEPUBIFY_URL = "https://github.com/pgaskin/kepubify/releases/download/v{v}/{asset}"
-EPUBCHECK_URL = (
-    "https://github.com/w3c/epubcheck/releases/download/v{v}/epubcheck-{v}.zip"
-)
 
 # kepubify publishes one bare binary per platform, named for the target.
 KEPUBIFY_ASSETS = {
@@ -86,28 +72,6 @@ def fetch_kepubify(vendor: Path) -> Path:
     return target
 
 
-def fetch_epubcheck(vendor: Path) -> Path:
-    data = _download(EPUBCHECK_URL.format(v=EPUBCHECK_VERSION))
-    target = vendor / "epubcheck"
-    if target.exists():
-        shutil.rmtree(target)
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
-        # The zip has a single epubcheck-<version>/ root; flatten it so the path
-        # joven.verify looks for does not carry a version number.
-        root = f"epubcheck-{EPUBCHECK_VERSION}/"
-        members = [n for n in zf.namelist() if n.startswith(root) and not n.endswith("/")]
-        if not members:
-            raise SystemExit(f"{root} not found in the epubcheck zip")
-        for name in members:
-            destination = target / name[len(root) :]
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(zf.read(name))
-    jar = target / "epubcheck.jar"
-    if not jar.is_file():
-        raise SystemExit(f"epubcheck.jar missing from {target}")
-    unpacked = sum(f.stat().st_size for f in target.rglob("*") if f.is_file())
-    print(f"  -> {target} ({unpacked:,} bytes)")
-    return jar
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -118,11 +82,6 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(__file__).resolve().parent / "vendor",
         help="where to put them (default: packaging/vendor)",
     )
-    parser.add_argument(
-        "--no-epubcheck",
-        action="store_true",
-        help="skip epubcheck, saving about 32 MB; verify then reports it SKIPPED",
-    )
     args = parser.parse_args(argv)
 
     vendor: Path = args.vendor
@@ -131,11 +90,6 @@ def main(argv: list[str] | None = None) -> int:
 
     print("kepubify:")
     fetch_kepubify(vendor)
-    if args.no_epubcheck:
-        print("epubcheck: skipped")
-    else:
-        print("epubcheck:")
-        fetch_epubcheck(vendor)
 
     total = sum(f.stat().st_size for f in vendor.rglob("*") if f.is_file())
     print(f"\nvendor total: {total / 1e6:.1f} MB")
