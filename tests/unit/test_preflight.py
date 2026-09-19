@@ -15,17 +15,26 @@ from typer.testing import CliRunner
 from joven import preflight
 from joven.cli import app
 from joven.preflight import FAIL, OK, OPTIONAL, REQUIRED, WARN, Check, blocking, run_checks
+from joven.verify import JAR_ENV
 
 runner = CliRunner()
 
 
 @pytest.fixture(autouse=True)
 def isolated_config(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    """No real config file, and a home the test owns."""
+    """No real config file, no inherited config, and a home the test owns.
+
+    JOVEN_EPUBCHECK_JAR has to be cleared, not just left to the config file:
+    the variable outranks the file on purpose, and CI's Windows job exports it
+    so that the jar route is exercised there. A preflight test that does not
+    clear it asks a different question on Windows than it does anywhere else --
+    which is exactly how this fixture earned the extra line.
+    """
     config = tmp_path / "joven.toml"
     config.write_text('backend = "ollama"\n', encoding="utf-8")
     monkeypatch.setenv("JOVEN_CONFIG", str(config))
     monkeypatch.setenv("JOVEN_HOME", str(tmp_path / "home"))
+    monkeypatch.delenv(JAR_ENV, raising=False)
     return config
 
 
@@ -113,15 +122,39 @@ def test_kepubify_missing_warns_but_does_not_block(monkeypatch: pytest.MonkeyPat
     assert "KEPUB" in kepubify.hint
 
 
-def test_epubcheck_missing_says_what_still_runs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The reassurance is the point: 11 of 12 checks do not need Java."""
+def test_epubcheck_missing_is_one_optional_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Missing epubcheck costs the 12th check and nothing else.
+
+    One row, not two. Java used to get its own line, which was right while the app
+    shipped the jar and the JVM really was the missing piece; now a bare
+    "java — not found" names something the reader never asked for.
+    """
     _ollama(monkeypatch, up=True, models=["qwen3:8b"])
     monkeypatch.setattr(preflight, "epubcheck_command", lambda: None)
     monkeypatch.setattr(preflight.external, "resolve", lambda name: None)
     checks = run_checks(check_port=False)
+
+    assert [c.name for c in checks].count("java") == 0
     epubcheck = next(c for c in checks if c.name == "epubcheck")
     assert epubcheck.severity == OPTIONAL
     assert not epubcheck.blocking
+    assert "12th" in epubcheck.detail
+
+
+def test_a_configured_jar_with_no_jvm_is_the_one_case_that_names_java(
+    monkeypatch: pytest.MonkeyPatch, isolated_config
+) -> None:
+    """Java is only worth naming when it is genuinely the missing piece."""
+    _ollama(monkeypatch, up=True, models=["qwen3:8b"])
+    isolated_config.write_text(
+        'backend = "ollama"\nepubcheck_jar = "/tmp/epubcheck.jar"\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(preflight, "epubcheck_command", lambda: None)
+    monkeypatch.setattr(preflight.external, "java_runtime", lambda: None)
+    checks = run_checks(check_port=False)
+
+    epubcheck = next(c for c in checks if c.name == "epubcheck")
+    assert "Java" in epubcheck.detail
     assert "Eleven" in epubcheck.hint
 
 
@@ -186,14 +219,14 @@ def test_as_dict_carries_everything_the_page_needs() -> None:
     }
 
 
-def test_the_java_hint_names_a_command_that_exists_on_this_platform(
+def test_the_install_hint_names_a_command_that_exists_on_this_platform(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A Linux reader told to run `winget` is worse off than one told nothing."""
-    expected = {"win32": "winget", "darwin": "brew"}
-    for platform, command in (("win32", "winget"), ("darwin", "brew"), ("linux", "default-jre")):
+    """A Linux reader told to run `scoop` is worse off than one told nothing."""
+    expected = {"win32": "scoop", "darwin": "brew"}
+    for platform, command in (("win32", "scoop"), ("darwin", "brew"), ("linux", "distribution")):
         monkeypatch.setattr(preflight.sys, "platform", platform)
-        hint = preflight._java_hint()
+        hint = preflight._install_hint()
         assert command in hint
         for other in set(expected.values()) - {command}:
             assert other not in hint

@@ -222,68 +222,17 @@ def test_the_apps_own_binary_wins_over_one_on_path(
 def test_a_vendor_hit_is_a_file_not_a_directory(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """epubcheck lives in the vendor dir as a *directory*, and must not shadow PATH.
+    """A directory in the vendor dir must not answer for a tool.
 
     ``resolve`` returning a directory would satisfy every availability check and
-    then fail at the point of invocation -- trap 1 in a new costume.
+    then fail at the point of invocation -- trap 1 in a new costume. The bundled
+    epubcheck was the original way to get one there; the invariant is about
+    ``resolve`` rather than about that tool, so it outlives it.
     """
     vendor = tmp_path / "vendor"
-    (vendor / "epubcheck").mkdir(parents=True)
+    (vendor / "kepubify").mkdir(parents=True)
     monkeypatch.setenv(external.VENDOR_ENV, str(vendor))
     monkeypatch.setattr(external.shutil, "which", lambda _n: None)
-    assert external.resolve("epubcheck") is None
+    assert external.resolve("kepubify") is None
 
 
-def test_the_bundled_jar_is_the_last_route_to_epubcheck(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """No launcher, no configured jar -- the app's own copy still works."""
-    vendor = tmp_path / "vendor"
-    jar = vendor / "epubcheck" / "epubcheck.jar"
-    jar.parent.mkdir(parents=True)
-    jar.write_bytes(b"")
-    monkeypatch.setenv(external.VENDOR_ENV, str(vendor))
-    monkeypatch.setenv("JOVEN_CONFIG", str(tmp_path / "absent.toml"))
-    (tmp_path / "absent.toml").write_text("", encoding="utf-8")
-    # "No configured jar" has to be arranged, not assumed: JOVEN_EPUBCHECK_JAR
-    # outranks the bundled copy on purpose, and CI's Windows job exports it. An
-    # empty JOVEN_CONFIG does not neutralise it, because the variable beats the
-    # file. Without this the test passes or fails according to whose machine it
-    # is running on.
-    monkeypatch.delenv(JAR_ENV, raising=False)
-    monkeypatch.setattr(
-        external.shutil, "which", lambda n: "/usr/bin/java" if n == "java" else None
-    )
-    # These assert which jar wins, not whether this host has a JDK, so the probe
-    # gets an answer rather than the host's /usr/bin/java -- which on a Mac is a
-    # stub that refuses to start and on Windows is not a path at all.
-    monkeypatch.setattr(
-        external, "run", lambda argv: subprocess.CompletedProcess(argv, 0, "", "")
-    )
-    command = epubcheck_command()
-    assert command is not None
-    assert command[:2] == ["/usr/bin/java", "-jar"]
-    assert command[2] == str(jar)
-
-
-def test_a_configured_jar_outranks_the_bundled_one(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Someone who set the path meant it."""
-    vendor = tmp_path / "vendor"
-    (vendor / "epubcheck").mkdir(parents=True)
-    (vendor / "epubcheck" / "epubcheck.jar").write_bytes(b"")
-    theirs = tmp_path / "theirs.jar"
-    theirs.write_bytes(b"")
-    monkeypatch.setenv(external.VENDOR_ENV, str(vendor))
-    monkeypatch.setenv(JAR_ENV, str(theirs))
-    monkeypatch.setenv("JOVEN_CONFIG", str(tmp_path / "absent.toml"))
-    (tmp_path / "absent.toml").write_text("", encoding="utf-8")
-    monkeypatch.setattr(
-        external.shutil, "which", lambda n: "/usr/bin/java" if n == "java" else None
-    )
-    monkeypatch.setattr(
-        external, "run", lambda argv: subprocess.CompletedProcess(argv, 0, "", "")
-    )
-    command = epubcheck_command()
-    assert command is not None and command[2] == str(theirs)

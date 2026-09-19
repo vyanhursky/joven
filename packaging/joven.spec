@@ -12,7 +12,9 @@
 # PyInstaller's normal binary collection catches them. The collect_* calls below
 # are belt and braces and cost nothing. That 291 MB is also why the bundle is the
 # size it is, and why it cannot be trimmed by selecting languages — measured on
-# Windows 2026-09-17: 357 MB on disk, 220 MB zipped.
+# Windows 2026-09-17: 357 MB on disk, 220 MB zipped. Dropping the bundled
+# epubcheck in b8 took about 22 MB off that (macOS DMG: 223 MB -> 201 MB), which
+# is most of what was left to take without touching lingua.
 #
 # The build is onedir, not onefile. onefile unpacks the whole bundle to a temp
 # directory on *every* launch, which at this size is a wait a reader reads as a

@@ -212,7 +212,7 @@ this way is in [docs/architecture.md](docs/architecture.md).
 | **Platform** | macOS, Linux, or Windows 10/11. Developed and device-verified on Apple Silicon; a whole book has been through the pipeline on each. |
 | **A local model server** | [Ollama](https://ollama.com), or any server speaking the OpenAI chat protocol — llama.cpp, LM Studio, vLLM. About 6 GB of disk for `qwen3:8b`; 16 GB of memory sets the ceiling at 7–14B parameters. |
 | **Python** | 3.11 or later |
-| **Java** | `epubcheck` is a JAR. macOS ships a JVM; on Windows, `winget install Microsoft.OpenJDK.21` if `java -version` comes back empty |
+| **Java** | Only for `epubcheck`, which is a JAR. macOS shipped a real JVM long ago and now ships only a stub that prints "Unable to locate a Java Runtime" — so check `java -version` rather than assuming, and `brew install openjdk` / `winget install Microsoft.OpenJDK.21` if it comes back empty |
 | **Reader** | A **Kobo**, sideloaded over USB, is the verified target. Apple Books renders the footnotes as popups too. |
 
 Two external tools do work Python should not:
@@ -255,8 +255,10 @@ setx JOVEN_EPUBCHECK_JAR "C:\tools\epubcheck-5.1.0\epubcheck.jar"
 `setx` writes the variable for *future* terminals, so open a new one before
 running `joven` — the window you typed it in will not see it.
 
-Skipping this does not fail loudly: `verify` reports epubcheck as `SKIPPED`.
-`joven doctor` says so plainly, and the downloadable app carries its own copy.
+Skipping this does not fail loudly: `verify` reports epubcheck as `SKIPPED` and
+`joven doctor` says so plainly. The downloadable app does not carry a copy — the
+jar needs a JVM the app cannot bundle, so it would have been 32 MB that never ran
+for most readers.
 
 </details>
 
@@ -302,10 +304,10 @@ joven verify  out/book.annotated.epub --original book.epub
 ```
 
 **`doctor`** is what to run when something is not working, and before the first
-book. It checks the model server, the model, `kepubify`, Java and `epubcheck`, and
+book. It checks the model server, the model, `kepubify` and `epubcheck`, and
 reports what each missing piece actually costs — a missing model stops a run, a
-missing `kepubify` costs you the KEPUB, a missing Java narrows the integrity gate
-from twelve checks to eleven. It exits non-zero only for the first kind. The
+missing `kepubify` costs you the KEPUB, a missing `epubcheck` narrows the
+integrity gate from twelve checks to eleven. It exits non-zero only for the first kind. The
 browser UI's **Setup** tab shows the same checks and opens on them when something
 required is missing.
 
@@ -407,7 +409,7 @@ The code is about 7,000 lines under `src/joven/`:
 | [`ui/`](src/joven/ui) | `joven ui` — books, a one-at-a-time job runner, the JSON routes, and the page |
 | [`config.py`](src/joven/config.py) | `joven.toml`, `JOVEN_*`, and which one wins |
 | [`preflight.py`](src/joven/preflight.py) | `joven doctor` and the UI's Setup tab — every dependency, and what its absence costs |
-| [`external.py`](src/joven/external.py) | Finding `kepubify` and `java`, the app's bundled copies first |
+| [`external.py`](src/joven/external.py) | Finding `kepubify`, `epubcheck` and `java`, the app's bundled `kepubify` first |
 | [`verify.py`](src/joven/verify.py) | The 12-check integrity gate, including the text-preservation invariant |
 | [`trace.py`](src/joven/trace.py) | One record per segment, annotated or not |
 

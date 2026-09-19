@@ -21,7 +21,7 @@ and take the file for your computer:
 | Mac (Apple Silicon — M1 and later) | `Joven-macos-arm64.dmg` |
 | Linux | `Joven-linux-x64.tar.gz` |
 
-It is a large download — about 220 MB — because Joven carries everything it needs
+It is a large download — about 200 MB — because Joven carries everything it needs
 except the translation model. Most of that size is the language detector that
 decides which sentences are Spanish.
 
@@ -118,9 +118,11 @@ neither stops you reading:
 copy. If you see it, the download was probably extracted incompletely: extract the
 whole folder again.
 
-**"java — not found"** is normal and harmless. Joven runs twelve checks on the
-book it produces; eleven are built in, and the twelfth uses an external validator
-written in Java. Without Java that one is skipped. The book is fine.
+**"epubcheck — not installed"** is normal and harmless, and you can ignore it.
+Joven runs twelve checks on the book it produces. Eleven are built in, including
+the one that matters most — that your book's text came through unchanged. The
+twelfth runs an external validator that Joven does not ship, because it needs
+Java. Without it that one check is skipped. The book is fine.
 
 Anything else: [open an issue](https://github.com/vyanhursky/joven/issues) and
 paste what the Setup tab says.

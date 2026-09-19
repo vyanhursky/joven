@@ -3,6 +3,28 @@
 Release notes. The GitHub release for each tag takes its text from the matching
 section here, so every version has one.
 
+## Unreleased
+
+### Changed
+
+- **The app no longer bundles `epubcheck`**, and the download drops from 223 MB
+  to 201 MB on macOS. The jar needs a JVM the app cannot ship, so for the readers
+  the app exists for it was 32 MB that never ran — while the two Setup rows
+  explaining its absence were the most confusing thing on the page. epubcheck
+  remains a development and CI dependency, where it earns its place as the only
+  gate that validates the output as an EPUB rather than as a diff of the input;
+  a reader who wants the twelfth check installs it and Joven finds it on `PATH`.
+- **`doctor` reports epubcheck in one row instead of two.** A separate `java` row
+  was right while the app shipped the jar and the JVM really was the missing
+  piece. Now it named something the reader never asked for, next to a second row
+  saying the same thing. Java appears only where it is genuinely what is missing:
+  a jar someone configured, with no runtime to run it.
+
+### Fixed
+
+- The README said macOS ships a JVM. It ships a stub that prints "Unable to
+  locate a Java Runtime" and exits 1.
+
 ## v1.0.0b7 — 2026-09-18
 
 ### Added
