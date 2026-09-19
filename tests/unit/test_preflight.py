@@ -15,17 +15,26 @@ from typer.testing import CliRunner
 from joven import preflight
 from joven.cli import app
 from joven.preflight import FAIL, OK, OPTIONAL, REQUIRED, WARN, Check, blocking, run_checks
+from joven.verify import JAR_ENV
 
 runner = CliRunner()
 
 
 @pytest.fixture(autouse=True)
 def isolated_config(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    """No real config file, and a home the test owns."""
+    """No real config file, no inherited config, and a home the test owns.
+
+    JOVEN_EPUBCHECK_JAR has to be cleared, not just left to the config file:
+    the variable outranks the file on purpose, and CI's Windows job exports it
+    so that the jar route is exercised there. A preflight test that does not
+    clear it asks a different question on Windows than it does anywhere else --
+    which is exactly how this fixture earned the extra line.
+    """
     config = tmp_path / "joven.toml"
     config.write_text('backend = "ollama"\n', encoding="utf-8")
     monkeypatch.setenv("JOVEN_CONFIG", str(config))
     monkeypatch.setenv("JOVEN_HOME", str(tmp_path / "home"))
+    monkeypatch.delenv(JAR_ENV, raising=False)
     return config
 
 
